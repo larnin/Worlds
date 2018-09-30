@@ -5,6 +5,7 @@ using System.Text;
 using UnityEngine;
 using NRand;
 using System.Diagnostics;
+using Sirenix.OdinInspector;
 
 public struct Pair<T, U>
 {
@@ -67,13 +68,22 @@ public class PlanetGeneratorData
 
     public ElevationData elevationData = new ElevationData();
     public Biome[] biomes;
+
+    public int riverNb = 5;
+    public float riverMoistureMin = 0.5f;
+    public float moisturePropagationResistance = 1.0f;
 }
 
 [Serializable]
 public class Biome
 {
+    public string name;
+    [HorizontalGroup, LabelWidth(100),TableColumnWidth(30)]
     public bool isOceanBiome = false;
+    [HorizontalGroup, LabelWidth(100)]
     public bool isLakeBiome = false;
+    [HorizontalGroup, LabelWidth(100)]
+    public bool isRiverBiome = false;
     public Color color;
     public float moisture;
     public float height;
@@ -100,12 +110,24 @@ public struct PlanetPoint
     public List<int> connectedPoints;
 }
 
+public struct RiverPoint
+{
+    public RiverPoint(float _width, int _index)
+    {
+        width = _width;
+        index = _index;
+    }
+
+    public float width;
+    public int index;
+}
+
 public class PlanetData
 {
     public float scale;
     public PlanetPoint[] points;
     public Triangle[] triangles;
-    public List<int[]> rivers = new List<int[]>();
+    public List<RiverPoint[]> rivers = new List<RiverPoint[]>();
     public Biome[] biomes;
 }
 
@@ -122,7 +144,11 @@ public static class PlanetGenerator
         makePerlinElevation(planet, gen, data.elevationData.perlinFactors);
         makeFinalElevation(planet, data.elevationData.minHeight, data.elevationData.maxHeight, data.elevationData.forcedOffsetElevation
                          , data.elevationData.oceanLevel, data.elevationData.lakeSize, data.elevationData.elevationCurve);
-        
+        makeRivers(planet, gen, data.riverNb);
+        makeMoisture(planet, data.riverMoistureMin, data.moisturePropagationResistance);
+        makeBiomes(planet, data.elevationData.maxHeight);
+
+
         return planet;
     }
 
@@ -150,16 +176,10 @@ public static class PlanetGenerator
         {
             planet.points[i].point = points[i];
             planet.points[i].biomeID = -1;
+            planet.points[i].connectedPoints = new List<int>();
         }
         foreach(var t in planet.triangles)
         {
-            if (planet.points[t.v1].connectedPoints == null)
-                planet.points[t.v1].connectedPoints = new List<int>();
-            if (planet.points[t.v2].connectedPoints == null)
-                planet.points[t.v2].connectedPoints = new List<int>();
-            if (planet.points[t.v3].connectedPoints == null)
-                planet.points[t.v3].connectedPoints = new List<int>();
-
             if (!planet.points[t.v1].connectedPoints.Contains(t.v2))
                 planet.points[t.v1].connectedPoints.Add(t.v2);
             if (!planet.points[t.v1].connectedPoints.Contains(t.v3))
@@ -281,8 +301,11 @@ public static class PlanetGenerator
                 bool toAdd = false;
                 foreach (var p in planet.points[i].connectedPoints)
                 {
-                    if (planet.points[i].biomeID == oceanBiomeIndex)
+                    if (planet.points[p].biomeID == oceanBiomeIndex)
+                    {
                         toAdd = true;
+                        break;
+                    }
                 }
                 if (toAdd)
                     nearPoints.Add(i);
@@ -290,43 +313,48 @@ public static class PlanetGenerator
         }
         if (nearPoints.Count == 0)
             nearPoints.Add(0);
-
-        List<int> setPoints = new List<int>();
+        UnityEngine.Debug.Log(nearPoints.Count);
+        
         List<int> nextPoints = new List<int>();
 
         float[] newHeight = new float[planet.points.Length];
+        bool[] setPoints = new bool[planet.points.Length];
 
         foreach(var p in nearPoints)
         {
-            newHeight[p] = 0;
-            setPoints.Add(p);
+            newHeight[p] = 0; 
+            setPoints[p] = true;
             foreach (var nextP in planet.points[p].connectedPoints)
                 if (!nearPoints.Contains(nextP) && !nextPoints.Contains(nextP))
                     nextPoints.Add(nextP);
         }
 
         sw.Stop(); UnityEngine.Debug.Log("Elapsed near points " + sw.Elapsed); sw.Start();
-        
+
         while(nextPoints.Count > 0)
         {
             var current = nextPoints[0];
             nextPoints.RemoveAt(0);
-            if(!setPoints.Contains(current))
-                setPoints.Add(current);
-            int lowestIndex = 0;
+            setPoints[current] = true;
+            
+            int lowestIndex = -1;
             foreach(var p in planet.points[current].connectedPoints)
             {
-                if (setPoints.Contains(p))
+                if(setPoints[p])
                 {
-                    if (Mathf.Abs(newHeight[p]) < Mathf.Abs(newHeight[lowestIndex]))
+                    if (lowestIndex < 0 || Mathf.Abs(newHeight[p]) < Mathf.Abs(newHeight[lowestIndex]))
                         lowestIndex = p;
                 }
-                else if (!nextPoints.Contains(p))
+                else if(!nextPoints.Contains(p))
+                {
                     nextPoints.Add(p);
+                }
             }
 
-            float delta = Mathf.Abs(planet.points[lowestIndex].height - planet.points[current].height) + forcedOffsetElevation;
-            newHeight[current] = newHeight[lowestIndex] + delta * Mathf.Sign(newHeight[lowestIndex]);
+            float d = (planet.points[lowestIndex].point - planet.points[current].point).magnitude;
+            float dHeight = Mathf.Abs(planet.points[lowestIndex].height - planet.points[current].height);
+            float sign = planet.points[current].biomeID == oceanBiomeIndex ? -1 : 1;
+            newHeight[current] = newHeight[lowestIndex] + (d * forcedOffsetElevation + dHeight) * sign;
         }
 
         float min = Mathf.Min(newHeight);
@@ -392,6 +420,173 @@ public static class PlanetGenerator
                 visitedPoints.Add(p);
                 planet.points[p].biomeID = biomeIndex;
             }
+        }
+    }
+
+    static void makeRivers(PlanetData planet, IRandomGenerator gen, int riverNb)
+    {
+        bool[] possiblePositions = new bool[planet.points.Length];
+        for (int i = 0; i < planet.points.Length; i++)
+        {
+            if (planet.points[i].biomeID >= 0)
+            {
+                possiblePositions[i] = false;
+                continue;
+            }
+            bool connectedNotOk = false;
+            foreach (var p in planet.points[i].connectedPoints)
+            {
+                if (planet.points[p].biomeID >= 0)
+                {
+                    connectedNotOk = true;
+                    possiblePositions[i] = false;
+                    break;
+                }
+            }
+            if (connectedNotOk)
+                continue;
+            possiblePositions[i] = true;
+        }
+
+        const int testCount = 20;
+        var dStart = new UniformIntDistribution(0, planet.points.Length);
+
+        for (int i = 0; i < riverNb; i++)
+        {
+            int startIndex = -1;
+            for (int j = 0; j < testCount; j++)
+            {
+                int index = dStart.Next(gen);
+                if (possiblePositions[j])
+                {
+                    startIndex = index;
+                    break;
+                }
+            }
+            if (startIndex < 0)
+                continue;
+
+            List<RiverPoint> points = new List<RiverPoint>();
+            points.Add(new RiverPoint(1, startIndex));
+
+            while (true)
+            {
+                int bestIndex = -1;
+                int current = points[points.Count - 1].index;
+                foreach (var p in planet.points[current].connectedPoints)
+                {
+                    if (planet.points[current].height > planet.points[p].height && (bestIndex == -1 || planet.points[p].height < planet.points[bestIndex].height))
+                        bestIndex = p;
+                }
+                if (bestIndex < 0)
+                    break;
+                points.Add(new RiverPoint(points[points.Count - 1].width + 1, bestIndex));
+                if (!possiblePositions[bestIndex])
+                    break;
+            }
+            var river = new RiverPoint[points.Count];
+            for (int j = 0; j < points.Count; j++)
+            {
+                river[j] = points[j];
+                possiblePositions[points[j].index] = false;
+            }
+            var lastPoint = river[river.Length - 1];
+            int currentRiverIndex = -1;
+            bool found = false;
+            for (int j = 0; j < planet.rivers.Count; j++)
+            {
+                if (j == currentRiverIndex)
+                    continue;
+                for (int k = 0; k < planet.rivers[j].Length; k++)
+                {
+                    if (found)
+                        planet.rivers[j][k].width += lastPoint.width;
+                    else
+                    {
+                        if (planet.rivers[j][k].index == lastPoint.index)
+                            found = true;
+                        planet.rivers[j][k].width += lastPoint.width;
+                    }
+                }
+                if (found)
+                {
+                    found = false;
+                    currentRiverIndex = j;
+                    j = -1;
+                }
+            }
+            planet.rivers.Add(river);
+        }
+
+        float maxRiverSize = 0;
+        for (int j = 0; j < planet.rivers.Count; j++)
+            for (int k = 0; k < planet.rivers[j].Length; k++)
+                maxRiverSize = Mathf.Max(maxRiverSize, planet.rivers[j][k].width);
+        for (int j = 0; j < planet.rivers.Count; j++)
+            for (int k = 0; k < planet.rivers[j].Length; k++)
+                planet.rivers[j][k].width /= maxRiverSize;
+    }
+
+    static void makeMoisture(PlanetData planet, float riverMoistureMin, float moisturePropagationResistance)
+    {
+        List<int> nextPoints = new List<int>();
+        bool[] setPoints = new bool[planet.points.Length];
+
+        foreach(var river in planet.rivers)
+            for(int i = 0; i < river.Length; i++)
+            {
+                int index = river[i].index;
+                float m = i / river.Length * (1 - riverMoistureMin) + riverMoistureMin;
+                planet.points[index].moisture = Mathf.Max(planet.points[index].moisture, m);
+                setPoints[index] = true;
+                if (!nextPoints.Contains(index))
+                    nextPoints.Add(index);
+            }
+
+        while(nextPoints.Count > 0)
+        {
+            int current = nextPoints[0];
+            nextPoints.RemoveAt(0);
+            setPoints[current] = true;
+
+            int bestMoistureIndex = -1;
+            foreach (var p in planet.points[current].connectedPoints)
+            {
+                if (setPoints[p])
+                {
+                    if (bestMoistureIndex < 0 || Mathf.Abs(planet.points[bestMoistureIndex].moisture) > Mathf.Abs(planet.points[p].moisture))
+                        bestMoistureIndex = p;
+                }
+                else if (!nextPoints.Contains(p))
+                {
+                    nextPoints.Add(p);
+                }
+            }
+
+            float d = (planet.points[bestMoistureIndex].point - planet.points[current].point).magnitude;
+            planet.points[current].moisture = Mathf.Max(0, planet.points[bestMoistureIndex].moisture - d * moisturePropagationResistance);
+        }
+    }
+
+    static void makeBiomes(PlanetData planet, float maxHeight)
+    {
+        for(int i = 0; i < planet.points.Length; i++)
+        {
+            if (planet.points[i].biomeID > 0)
+                continue;
+
+            int bestBiomeIndex = -1;
+            var pos = new Vector2(planet.points[i].height / maxHeight, planet.points[i].moisture);
+            for(int j = 0; j < planet.biomes.Length; j++)
+            {
+                if (planet.biomes[j].isLakeBiome || planet.biomes[j].isOceanBiome || planet.biomes[j].isRiverBiome)
+                    continue;
+                if (bestBiomeIndex < 0 || (new Vector2(planet.biomes[j].height, planet.biomes[j].moisture) - pos).sqrMagnitude < (new Vector2(planet.biomes[bestBiomeIndex].height, planet.biomes[bestBiomeIndex].moisture) - pos).sqrMagnitude)
+                    bestBiomeIndex = j;
+            }
+            if (bestBiomeIndex < 0)
+                continue;
+            planet.points[i].biomeID = bestBiomeIndex;
         }
     }
 }

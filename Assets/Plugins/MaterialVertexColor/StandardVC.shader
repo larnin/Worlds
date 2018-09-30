@@ -1,8 +1,8 @@
 // Unity built-in shader source. Copyright (c) 2016 Unity Technologies. MIT license (see license.txt)
 
-Shader "Standard_VC"
+Shader "Standard_VC" 
 {
-    Properties
+    Properties 
     {
         _Color("Color", Color) = (1,1,1,1)
         _MainTex("Albedo", 2D) = "white" {}
