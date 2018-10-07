@@ -19,7 +19,7 @@ public static class PlanetRenderer
             points[3 * i + 1] = planet.points[planet.triangles[i].v2].point * (planet.points[planet.triangles[i].v2].height + 1) * planet.scale;
             points[3 * i + 2] = planet.points[planet.triangles[i].v3].point * (planet.points[planet.triangles[i].v3].height + 1) * planet.scale;
 
-            var biomeID = planet.points[planet.triangles[i].v1].biomeID;
+            var biomeID = biomeIndexOfTriangle(planet, i);
             Color biomeColor;
             if (biomeID < 0)
                 biomeColor = new Color(255, 0, 255);
@@ -39,6 +39,41 @@ public static class PlanetRenderer
         m.RecalculateNormals();
         m.RecalculateTangents();
         m.RecalculateBounds();
+
         return m;
+    }
+
+    static int biomeIndexOfTriangle(PlanetData planet, int triangleIndex)
+    {
+        var t = planet.triangles[triangleIndex];
+
+        int b1 = planet.points[t.v1].biomeID;
+        int b2 = planet.points[t.v2].biomeID;
+        int b3 = planet.points[t.v3].biomeID;
+
+        if (planet.biomes[b1].isOceanBiome || planet.biomes[b2].isOceanBiome || planet.biomes[b3].isOceanBiome)
+        {
+            return planet.biomes[b1].isOceanBiome ? b1 : planet.biomes[b2].isOceanBiome ? b2 : b3;
+        }
+        if (planet.biomes[b1].isLakeBiome && planet.biomes[b2].isLakeBiome && planet.biomes[b3].isLakeBiome)
+            return b1;
+        else if(planet.biomes[b1].isLakeBiome || planet.biomes[b2].isLakeBiome || planet.biomes[b3].isLakeBiome)
+        {
+            return !planet.biomes[b1].isLakeBiome ? b1 : !planet.biomes[b2].isLakeBiome ? b2 : b3;
+        }
+
+        if (b1 == b2)
+            return b1;
+        if (b2 == b3)
+            return b2;
+        if (b3 == b1)
+            return b3;
+
+        int t3 = triangleIndex % 3;
+        if (t3 == 0)
+            return b1;
+        if (t3 == 1)
+            return b2;
+        return b3;
     }
 }
