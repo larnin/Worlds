@@ -33,6 +33,7 @@ public static class PlanetRenderer
             triangles[i] = i;
 
         Mesh m = new Mesh();
+        m.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
         m.vertices = points;
         m.colors32 = colors;
         m.triangles = triangles;

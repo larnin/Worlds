@@ -335,6 +335,7 @@ MonoBehaviour:
       oceanLevel: 0
       lakeSize: 0.1
       forcedOffsetElevation: 0.2
+      randomizeElevation: 0.1
     biomes:
     - name: Lake
       isOceanBiome: 0
@@ -482,7 +483,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   planetGeneratorData:
     seed: 3
-    sphereDivisionLevel: 5
+    sphereDivisionLevel: 6
     planetScale: 5
     elevationData:
       elevationCurve:
@@ -530,6 +531,7 @@ MonoBehaviour:
       oceanLevel: 0
       lakeSize: 0.02
       forcedOffsetElevation: 0.2
+      randomizeElevation: 4
     biomes:
     - name: Lake
       isOceanBiome: 0

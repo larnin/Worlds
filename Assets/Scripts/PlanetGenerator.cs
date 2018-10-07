@@ -60,6 +60,7 @@ public class PlanetGeneratorData
         public float oceanLevel; // [-1;1] value the proportion of the perlin elevation
         public float lakeSize = 0.1f;
         public float forcedOffsetElevation = 0.1f;
+        public float randomizeElevation = 0.1f;
     }
 
     public int seed;
@@ -148,7 +149,7 @@ public static class PlanetGenerator
         makePerlinElevation(planet, gen, data.elevationData.perlinFactors);
         UnityEngine.Debug.Log("Elapsed perlin " + sw.Elapsed); sw.Reset(); sw.Start();
         makeFinalElevation(planet, data.elevationData.minHeight, data.elevationData.maxHeight, data.elevationData.forcedOffsetElevation
-                         , data.elevationData.oceanLevel, data.elevationData.lakeSize, data.elevationData.elevationCurve);
+                         , data.elevationData.oceanLevel, data.elevationData.lakeSize, data.elevationData.elevationCurve, gen, data.elevationData.randomizeElevation);
         UnityEngine.Debug.Log("Elapsed elevation " + sw.Elapsed); sw.Reset(); sw.Start();
         makeRivers(planet, gen, data.riverNb, data.riverTestCount);
         UnityEngine.Debug.Log("Elapsed rivers " + sw.Elapsed); sw.Reset(); sw.Start();
@@ -283,8 +284,21 @@ public static class PlanetGenerator
             planet.points[i].height = (planet.points[i].height - minValue) / (maxValue - minValue) * 2 - 1; // range [-1,1]
     }
 
-    static void makeFinalElevation(PlanetData planet, float minHeight, float maxHeight, float forcedOffsetElevation, float oceanLevel, float lakeSize, AnimationCurve elevationCurve)
+    struct NextValue
     {
+        public NextValue(int _index, float _height)
+        {
+            index = _index;
+            height = _height;
+        }
+        public int index;
+        public float height;
+    }
+
+    static void makeFinalElevation(PlanetData planet, float minHeight, float maxHeight, float forcedOffsetElevation, float oceanLevel, float lakeSize, AnimationCurve elevationCurve, IRandomGenerator gen, float randomizeElevation)
+    {
+        var distrib = new UniformFloatDistribution(0, randomizeElevation);
+
         int oceanBiomeIndex = -1;
         int lakeBiomeIndex = -1;
 
@@ -305,11 +319,9 @@ public static class PlanetGenerator
 
         bool[] setPoints = new bool[planet.points.Length];
         bool[] nextPoints = new bool[planet.points.Length];
-        List<int> next = new List<int>();
+        List<NextValue> next = new List<NextValue>();
         float[] newHeight = new float[planet.points.Length];
-        float[] oldNewHeight = new float[planet.points.Length];
-
-        bool haveSetOnePoint = false;
+        
         for (int i = 0; i < planet.points.Length; i++)
         {
             if (planet.points[i].biomeID >= 0 || planet.points[i].height < oceanLevel)
@@ -327,28 +339,27 @@ public static class PlanetGenerator
                 continue;
 
             setPoints[i] = true;
-            haveSetOnePoint = true;
         }
 
-        if (!haveSetOnePoint)
+        if (next.Count == 0)
             setPoints[0] = true;
 
-        for (int i = 0; i < planet.points.Length; i++)
+        for(int i  = 0; i < planet.points.Length; i++)
         {
-            if (!setPoints[i])
-                continue;
-            foreach (var p in planet.points[i].connectedPoints)
+            if(setPoints[i])
             {
-                if (setPoints[p] || nextPoints[p])
-                    continue;
-                nextPoints[p] = true;
-                next.Add(p);
+                foreach(var p in planet.points[i].connectedPoints)
+                    if(!setPoints[p] && !nextPoints[p])
+                    {
+                        next.Add(new NextValue(p, 0));
+                        nextPoints[p] = true;
+                    }
             }
         }
         
         while(next.Count > 0)
         {
-            var current = next[0];
+            var current = next[0].index;
             next.RemoveAt(0);
             nextPoints[current] = false;
             setPoints[current] = true;
@@ -356,16 +367,8 @@ public static class PlanetGenerator
             int bestIndex = -1;
             foreach(var p in planet.points[current].connectedPoints)
             {
-                if(setPoints[p])
-                {
-                    if (bestIndex < 0 || Mathf.Abs(newHeight[p]) < Mathf.Abs(newHeight[bestIndex]))
-                        bestIndex = p;
-                }
-                else if(!nextPoints[p])
-                {
-                    next.Add(p);
-                    nextPoints[p] = true;
-                }
+                if (setPoints[p] && (bestIndex < 0 || newHeight[p] < newHeight[bestIndex]))
+                    bestIndex = p;
             }
 
             float d = (planet.points[bestIndex].point - planet.points[current].point).magnitude;
@@ -373,48 +376,49 @@ public static class PlanetGenerator
             float sign = planet.points[current].biomeID == oceanBiomeIndex ? -1 : 1;
             if (planet.points[current].biomeID == lakeBiomeIndex && lakeBiomeIndex >= 0)
                 newHeight[current] = newHeight[bestIndex];
-            else newHeight[current] = newHeight[bestIndex] + (d * forcedOffsetElevation + dHeight) * sign;
-            
-            if (next.Count <= 0)
-            {
-                for (int i = 0; i < planet.points.Length; i++)
-                {
-                    foreach (var p in planet.points[i].connectedPoints)
-                    {
-                        if (setPoints[p] && !nextPoints[p])
-                        {
-                            if (planet.points[p].biomeID == lakeBiomeIndex && lakeBiomeIndex >= 0)
-                            {
-                                if (newHeight[p] > newHeight[i])
-                                {
-                                    next.Add(p);
-                                    nextPoints[p] = true;
-                                }
-                            }
-                            else if (newHeight[p] != 0)
-                            {
-                                float dP = (planet.points[p].point - planet.points[i].point).magnitude;
-                                float dHeightP = Mathf.Abs(planet.points[p].height - planet.points[i].height);
+            else newHeight[current] = newHeight[bestIndex] + (d * (forcedOffsetElevation + distrib.Next(gen)) + dHeight) * sign;
 
-                                if (Mathf.Abs(newHeight[i] - newHeight[p]) >= Mathf.Abs(dP * forcedOffsetElevation + dHeightP) * 2f && Mathf.Abs(newHeight[i]) < Mathf.Abs(newHeight[p]) && oldNewHeight[i] != newHeight[i])
-                                {
-                                    oldNewHeight[i] = newHeight[i];
-                                    next.Add(p);
-                                    nextPoints[p] = true;
-                                }
-                            }
-                        }
-                    }
+            int index = 0;
+            for (int i = next.Count - 1; i >= 0; i--)
+                if (next[i].height <= newHeight[current])
+                {
+                    index = i + 1;
+                    break;
+                }
+
+            foreach (var p in planet.points[current].connectedPoints)
+            {
+                if (!setPoints[p] && !nextPoints[p])
+                {
+                    next.Insert(index, new NextValue(p, newHeight[current]));
+                    next.Add(new NextValue(p, newHeight[current]));
+                    nextPoints[p] = true;
                 }
             }
         }
+
+        UnityEngine.Debug.Log("\tElapsed heights " + sw.Elapsed); sw.Reset(); sw.Start();
+
+        for (int i = 0; i < planet.points.Length; i++)
+        {
+            if (newHeight[i] == 0)
+                continue;
+
+            float sum = 0;
+
+            foreach (var p in planet.points[i].connectedPoints)
+                sum += newHeight[p];
+            planet.points[i].height = sum / planet.points[i].connectedPoints.Count;
+        }
+
+        UnityEngine.Debug.Log("\tElapsed smooth " + sw.Elapsed); sw.Reset(); sw.Start();
 
         float min = Mathf.Min(newHeight);
         float max = Mathf.Max(newHeight);
 
         for (int i = 0; i < newHeight.Length; i++)
         {
-            float h = newHeight[i];
+            float h = planet.points[i].height;
             if (h < 0)
             {
                 h /= -min;
@@ -430,7 +434,7 @@ public static class PlanetGenerator
             planet.points[i].height = h;
         }
 
-        UnityEngine.Debug.Log("\tElapsed heights " + sw.Elapsed); sw.Reset(); sw.Start();
+        UnityEngine.Debug.Log("\tElapsed height curve " + sw.Elapsed); sw.Reset(); sw.Start();
     }
 
     static void setWaterBiomes(PlanetData planet, float oceanLevel, int oceanBiomeIndex, int lakeBiomeIndex, float lakeSize)
