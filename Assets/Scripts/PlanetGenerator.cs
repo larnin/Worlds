@@ -6,6 +6,7 @@ using UnityEngine;
 using NRand;
 using System.Diagnostics;
 using Sirenix.OdinInspector;
+using Priority_Queue;
 
 public struct Pair<T, U>
 {
@@ -38,6 +39,15 @@ public struct Pair<T, U>
         hash = hash * 23 + second.GetHashCode();
         return hash;
     }
+}
+
+class NextQueueNode : FastPriorityQueueNode
+{
+    public NextQueueNode(int _index)
+    {
+        index = _index;
+    }
+    public int index;
 }
 
 [Serializable]
@@ -212,12 +222,17 @@ public static class PlanetGenerator
 
     static void subdivise(ref Vector3[] points, ref Triangle[] triangles)
     {
+        Stopwatch sw = new Stopwatch();
+        sw.Start();
+
         int pointsSize = points.Length;
         int trianglesSize = triangles.Length;
 
         Vector3[] newPoints = new Vector3[pointsSize * 4];
         Array.Copy(points, newPoints, pointsSize);
         Triangle[] newTriangles = new Triangle[trianglesSize * 4];
+
+        UnityEngine.Debug.Log("\tElapsed New indexs " + sw.Elapsed); sw.Reset(); sw.Start();
 
         int newPointIndex = pointsSize;
         int newTriangleIndex = 0;
@@ -232,16 +247,17 @@ public static class PlanetGenerator
             {
                 int min = Mathf.Min(index1, index2);
                 int max = Mathf.Max(index1, index2);
+                var minmax = new Pair<int, int>(min, max);
 
                 int v;
-                if (!indexLookup.ContainsKey(new Pair<int, int>(min, max)))
+                if (!indexLookup.ContainsKey(minmax))
                 {
                     v = newPointIndex++;
                     newPoints[v] = ((newPoints[min] + newPoints[max]) / 2).normalized;
-                    indexLookup.Add(new Pair<int, int>(min, max), v);
+                    indexLookup.Add(minmax, v);
                 }
                 else
-                    v = indexLookup[new Pair<int, int>(min, max)];
+                    v = indexLookup[minmax];
                 return v;
             };
             int v1 = lookup(t.v1, t.v2);
@@ -253,10 +269,13 @@ public static class PlanetGenerator
             newTriangles[newTriangleIndex++] = new Triangle(t.v3, v3, v2);
             newTriangles[newTriangleIndex++] = new Triangle(v1, v2, v3);
         }
+        UnityEngine.Debug.Log("\tElapsed subdivise " + sw.Elapsed); sw.Reset(); sw.Start();
         triangles = newTriangles;
 
         points = new Vector3[newPointIndex];
         Array.Copy(newPoints, points, newPointIndex);
+        UnityEngine.Debug.Log("\tElapsed copie " + sw.Elapsed); sw.Reset(); sw.Start();
+        UnityEngine.Debug.Log("--- END ---");
     }
 
     static void makePerlinElevation(PlanetData planet, IRandomGenerator gen, PlanetGeneratorData.ElevationData.PerlinFactors[] perlinFactors)
@@ -319,7 +338,7 @@ public static class PlanetGenerator
 
         bool[] setPoints = new bool[planet.points.Length];
         bool[] nextPoints = new bool[planet.points.Length];
-        List<NextValue> next = new List<NextValue>();
+        FastPriorityQueue<NextQueueNode> next = new FastPriorityQueue<NextQueueNode>(planet.points.Length);
         float[] newHeight = new float[planet.points.Length];
         
         for (int i = 0; i < planet.points.Length; i++)
@@ -351,7 +370,7 @@ public static class PlanetGenerator
                 foreach(var p in planet.points[i].connectedPoints)
                     if(!setPoints[p] && !nextPoints[p])
                     {
-                        next.Add(new NextValue(p, 0));
+                        next.Enqueue(new NextQueueNode(p), 0);
                         nextPoints[p] = true;
                     }
             }
@@ -359,16 +378,20 @@ public static class PlanetGenerator
         
         while(next.Count > 0)
         {
-            var current = next[0].index;
-            next.RemoveAt(0);
+            var current = next.Dequeue().index;
             nextPoints[current] = false;
             setPoints[current] = true;
 
             int bestIndex = -1;
+            bool haveCheckedNotsetPoint = false;
             foreach(var p in planet.points[current].connectedPoints)
             {
-                if (setPoints[p] && (bestIndex < 0 || newHeight[p] < newHeight[bestIndex]))
-                    bestIndex = p;
+                if (setPoints[p])
+                {
+                    if (bestIndex < 0 || newHeight[p] < newHeight[bestIndex])
+                        bestIndex = p;
+                }
+                else if(!nextPoints[p]) haveCheckedNotsetPoint = true;
             }
 
             float d = (planet.points[bestIndex].point - planet.points[current].point).magnitude;
@@ -378,23 +401,49 @@ public static class PlanetGenerator
                 newHeight[current] = newHeight[bestIndex];
             else newHeight[current] = newHeight[bestIndex] + (d * (forcedOffsetElevation + distrib.Next(gen)) + dHeight) * sign;
 
-            int index = 0;
-            for (int i = next.Count - 1; i >= 0; i--)
-                if (next[i].height <= newHeight[current])
-                {
-                    index = i + 1;
-                    break;
-                }
+            if (!haveCheckedNotsetPoint)
+                continue;
 
             foreach (var p in planet.points[current].connectedPoints)
             {
                 if (!setPoints[p] && !nextPoints[p])
                 {
-                    next.Insert(index, new NextValue(p, newHeight[current]));
-                    next.Add(new NextValue(p, newHeight[current]));
+                    next.Enqueue(new NextQueueNode(p), newHeight[current]);
                     nextPoints[p] = true;
                 }
             }
+
+            //if (next.First == null || newHeight[current] <= next.First.Value.height)
+            //{
+            //    foreach (var p in planet.points[current].connectedPoints)
+            //    {
+            //        if (!setPoints[p] && !nextPoints[p])
+            //        {
+            //            next.Enqueue(new NextQueueNode(p), newHeight[current]);
+            //            next.AddFirst(new NextValue(p, newHeight[current]));
+            //            nextPoints[p] = true;
+            //        }
+            //    }
+            //}
+            //else
+            //{
+            //    var item = next.Last;
+            //    while (item.Previous != null)
+            //    {
+            //        if (item.Value.height <= newHeight[current])
+            //            break;
+            //        item = item.Previous;
+            //    }
+
+            //    foreach (var p in planet.points[current].connectedPoints)
+            //    {
+            //        if (!setPoints[p] && !nextPoints[p])
+            //        {
+            //            next.AddAfter(item, new NextValue(p, newHeight[current]));
+            //            nextPoints[p] = true;
+            //        }
+            //    }
+            //}
         }
 
         UnityEngine.Debug.Log("\tElapsed heights " + sw.Elapsed); sw.Reset(); sw.Start();

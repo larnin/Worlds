@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using UnityEngine;
@@ -8,6 +9,9 @@ public static class PlanetRenderer
 {
     public static Mesh createMesh(PlanetData planet)
     {
+        Stopwatch sw = new Stopwatch();
+        sw.Start();
+
         int size = planet.triangles.Length;
         int[] triangles = new int[size * 3];
         Color32[] colors = new Color32[size * 3];
@@ -22,7 +26,7 @@ public static class PlanetRenderer
             var biomeID = biomeIndexOfTriangle(planet, i);
             Color biomeColor;
             if (biomeID < 0)
-                biomeColor = new Color(255, 0, 255);
+                biomeColor = new Color(255, 255, 255);
             else biomeColor = planet.biomes[biomeID].color;
             colors[3 * i] = biomeColor;
             colors[3 * i + 1] = biomeColor;
@@ -41,6 +45,9 @@ public static class PlanetRenderer
         m.RecalculateTangents();
         m.RecalculateBounds();
 
+        sw.Stop();
+        UnityEngine.Debug.Log("Elapsed renderer " + sw.Elapsed);
+
         return m;
     }
 
@@ -51,6 +58,9 @@ public static class PlanetRenderer
         int b1 = planet.points[t.v1].biomeID;
         int b2 = planet.points[t.v2].biomeID;
         int b3 = planet.points[t.v3].biomeID;
+
+        if (b1 < 0 || b2 < 0 || b3 < 0)
+            return -1;
 
         if (planet.biomes[b1].isOceanBiome || planet.biomes[b2].isOceanBiome || planet.biomes[b3].isOceanBiome)
         {
