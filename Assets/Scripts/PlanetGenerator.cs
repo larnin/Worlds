@@ -8,7 +8,7 @@ using System.Diagnostics;
 using Sirenix.OdinInspector;
 using Priority_Queue;
 
-public struct Pair<T, U>
+public class Pair<T, U>
 {
     public Pair(T _first, U _second)
     {
@@ -34,9 +34,9 @@ public struct Pair<T, U>
 
     public override int GetHashCode()
     {
-        int hash = 17;
-        hash = hash * 23 + first.GetHashCode();
-        hash = hash * 23 + second.GetHashCode();
+        int hash = 5;
+        hash = hash * 11 + first.GetHashCode();
+        hash = hash * 7 + second.GetHashCode();
         return hash;
     }
 }
@@ -168,7 +168,6 @@ public static class PlanetGenerator
         makeBiomes(planet, data.elevationData.maxHeight);
         UnityEngine.Debug.Log("Elapsed biomes " + sw.Elapsed); sw.Reset(); sw.Start();
 
-
         return planet;
     }
 
@@ -181,23 +180,25 @@ public static class PlanetGenerator
                                           new Vector3(0,Z,X) , new Vector3(0,Z,-X), new Vector3(0,-Z,X) , new Vector3(0,-Z,-X),
                                           new Vector3(Z,X,0) , new Vector3(-Z,X,0), new Vector3(Z,-X,0) , new Vector3(-Z,-X,0) };
 
-        Triangle[] triangles = new Triangle[]{ new Triangle(0,1,4) , new Triangle(0,4,9) , new Triangle(9,4,5) , new Triangle(4,8,5) , new Triangle(4,1,8),
+        Triangle[] triangles = new Triangle[]{ new Triangle(0,1,4) , new Triangle(0,4,9), new Triangle(9,4,5) , new Triangle(4,8,5) , new Triangle(4,1,8),
                                                new Triangle(8,1,10), new Triangle(8,10,3), new Triangle(5,8,3) , new Triangle(5,3,2) , new Triangle(2,3,7),
                                                new Triangle(7,3,10), new Triangle(7,10,6), new Triangle(7,6,11), new Triangle(11,6,0), new Triangle(0,6,1),
                                                new Triangle(6,10,1), new Triangle(9,11,0), new Triangle(9,2,11), new Triangle(9,5,2) , new Triangle(7,11,2) };
 
-        for (int i = 0; i < divisonLevel; i++)
-            subdivise(ref points, ref triangles);
+        var sub = subdivise(points, triangles, divisonLevel);
 
         PlanetData planet = new PlanetData();
-        planet.points = new PlanetPoint[points.Length];
-        planet.triangles = triangles;
-        for (int i = 0; i < points.Length; i++)
+        planet.points = new PlanetPoint[sub.pointsCount];
+        planet.triangles = new Triangle[sub.trianglesCount];
+        for(int i = 0; i < planet.points.Length; i++)
         {
-            planet.points[i].point = points[i];
+            planet.points[i].point = sub.points[i];
             planet.points[i].biomeID = -1;
             planet.points[i].connectedPoints = new List<int>();
         }
+        for (int i = 0; i < planet.triangles.Length; i++)
+            planet.triangles[i] = sub.triangles[i];
+
         foreach(var t in planet.triangles)
         {
             if (!planet.points[t.v1].connectedPoints.Contains(t.v2))
@@ -214,68 +215,143 @@ public static class PlanetGenerator
                 planet.points[t.v3].connectedPoints.Add(t.v2);
         }
 
-        UnityEngine.Debug.Log("Points count : " + points.Length);
-        UnityEngine.Debug.Log("Triangle count : " + triangles.Length);
+        UnityEngine.Debug.Log("Points count : " + planet.points.Length);
+        UnityEngine.Debug.Log("Triangle count : " + planet.triangles.Length);
 
         return planet;
     }
 
-    static void subdivise(ref Vector3[] points, ref Triangle[] triangles)
+    class SubdiviseReturn
     {
-        Stopwatch sw = new Stopwatch();
-        sw.Start();
+        public Vector3[] points;
+        public Triangle[] triangles;
+        public int pointsCount;
+        public int trianglesCount;
+    }
 
-        int pointsSize = points.Length;
-        int trianglesSize = triangles.Length;
+    static SubdiviseReturn subdivise(Vector3[] points, Triangle[] triangles, int level)
+    {
+        SubdiviseReturn sub = new SubdiviseReturn();
+        sub.triangles = new Triangle[level * level * triangles.Length];
+        sub.points = new Vector3[sub.triangles.Length /2 + 2 ];
 
-        Vector3[] newPoints = new Vector3[pointsSize * 4];
-        Array.Copy(points, newPoints, pointsSize);
-        Triangle[] newTriangles = new Triangle[trianglesSize * 4];
+        for (int i = 0; i < points.Length; i++)
+            sub.points[i] = points[i];
 
-        UnityEngine.Debug.Log("\tElapsed New indexs " + sw.Elapsed); sw.Reset(); sw.Start();
+        int triangleIndex = 0;
+        int pointIndex = points.Length;
 
-        int newPointIndex = pointsSize;
-        int newTriangleIndex = 0;
+        Dictionary<Pair<int, int>, int[]> lookMap = new Dictionary<Pair<int, int>, int[]>();
 
-        Dictionary<Pair<int, int>, int> indexLookup = new Dictionary<Pair<int, int>, int>();
-
-        for(int i = 0; i < trianglesSize; i++)
+        for(int i = 0; i < triangles.Length; i++)
         {
-            Triangle t = triangles[i];
+            int[,] p = new int[level + 1,level + 1];
 
-            Func<int, int, int> lookup = (int index1, int index2) =>
+            for (int x = 0; x <= level; x++)
             {
-                int min = Mathf.Min(index1, index2);
-                int max = Mathf.Max(index1, index2);
-                var minmax = new Pair<int, int>(min, max);
-
-                int v;
-                if (!indexLookup.ContainsKey(minmax))
+                for (int y = 0; y <= level - x; y++)
                 {
-                    v = newPointIndex++;
-                    newPoints[v] = ((newPoints[min] + newPoints[max]) / 2).normalized;
-                    indexLookup.Add(minmax, v);
+                    if(x == 0 && y == 0)
+                    {
+                        p[x, y] = triangles[i].v2;
+                        continue;
+                    }
+                    if(x == 0 && y == level)
+                    {
+                        p[x, y] = triangles[i].v3;
+                        continue;
+                    }
+                    if(x == level && y == 0)
+                    {
+                        p[x, y] = triangles[i].v1;
+                        continue;
+                    }
+
+                    bool isOn = false;
+
+                    if (x == 0 || y == 0 || x + y == level)
+                    {
+                        int p1 = 0, p2 = 0;
+                        if (x == 0)
+                        {
+                            p1 = Mathf.Min(triangles[i].v2, triangles[i].v3);
+                            p2 = Mathf.Max(triangles[i].v2, triangles[i].v3);
+                        }
+                        else if (y == 0)
+                        {
+                            p1 = Mathf.Min(triangles[i].v1, triangles[i].v2);
+                            p2 = Mathf.Max(triangles[i].v1, triangles[i].v2);
+                        }
+                        else
+                        {
+                            p1 = Mathf.Min(triangles[i].v1, triangles[i].v3);
+                            p2 = Mathf.Max(triangles[i].v1, triangles[i].v3);
+                        }
+
+                        int lookIndex = 0;
+                        if (y == 0)
+                            lookIndex = level - x;
+                        else if (x == 0)
+                            lookIndex = y;
+                        else lookIndex = x;
+
+                        var pos = new Pair<int, int>(p1, p2);
+                        bool contains = lookMap.ContainsKey(pos);
+                        if (!contains)
+                        {
+                            int[] pp = new int[level + 1];
+                            for (int a = 0; a <= level; a++)
+                                pp[a] = -1;
+                            lookMap.Add(pos, pp);
+                        }
+
+                        int id = lookMap[pos][lookIndex];
+                        int id2 = lookMap[pos][level - lookIndex];
+                        if (id >= 0 && id2 > 0)
+                        {
+                            isOn = true;
+                            p[x, y] = id2;
+                        }
+                        else lookMap[pos][lookIndex] = pointIndex;
+                    }
+
+                    if (!isOn)
+                    {
+                        var p1 = points[triangles[i].v1];
+                        var p2 = points[triangles[i].v2];
+                        var p3 = points[triangles[i].v3];
+                        p[x, y] = pointIndex;
+                        int xMax = Mathf.Max(level - y, 1);
+                        sub.points[pointIndex] = ((p1 * x + p2 * (xMax - x)) / xMax * (level - y) + p3 * y).normalized;
+                        pointIndex++;
+                    }
                 }
-                else
-                    v = indexLookup[minmax];
-                return v;
-            };
-            int v1 = lookup(t.v1, t.v2);
-            int v2 = lookup(t.v2, t.v3);
-            int v3 = lookup(t.v3, t.v1);
+            }
 
-            newTriangles[newTriangleIndex++] = new Triangle(t.v1, v1, v3);
-            newTriangles[newTriangleIndex++] = new Triangle(t.v2, v2, v1);
-            newTriangles[newTriangleIndex++] = new Triangle(t.v3, v3, v2);
-            newTriangles[newTriangleIndex++] = new Triangle(v1, v2, v3);
+            for (int x = 0; x < level; x++)
+            {
+                for (int y = 0; y < level - x; y++)
+                {
+                    sub.triangles[triangleIndex].v1 = p[x, y];
+                    sub.triangles[triangleIndex].v2 = p[x, y + 1];
+                    sub.triangles[triangleIndex].v3 = p[x + 1, y];
+                    triangleIndex++;
+
+                    if (y != 0)
+                    {
+                        sub.triangles[triangleIndex].v1 = p[x, y];
+                        sub.triangles[triangleIndex].v2 = p[x + 1, y];
+                        sub.triangles[triangleIndex].v3 = p[x + 1, y - 1];
+                        triangleIndex++;
+                    }
+                }
+            }
         }
-        UnityEngine.Debug.Log("\tElapsed subdivise " + sw.Elapsed); sw.Reset(); sw.Start();
-        triangles = newTriangles;
 
-        points = new Vector3[newPointIndex];
-        Array.Copy(newPoints, points, newPointIndex);
-        UnityEngine.Debug.Log("\tElapsed copie " + sw.Elapsed); sw.Reset(); sw.Start();
-        UnityEngine.Debug.Log("--- END ---");
+        sub.pointsCount = pointIndex;
+        sub.trianglesCount = triangleIndex;
+
+        return sub;
     }
 
     static void makePerlinElevation(PlanetData planet, IRandomGenerator gen, PlanetGeneratorData.ElevationData.PerlinFactors[] perlinFactors)
