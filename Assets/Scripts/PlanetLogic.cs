@@ -37,7 +37,7 @@ public class PlanetLogic : MonoBehaviour
         sw.Start();
 
         //planetGeneratorData.seed = seed++;
-        planetGeneratorData.sphereDivisionLevel = seed++;
+        //planetGeneratorData.sphereDivisionLevel = seed++;
         var planet = PlanetGenerator.generate(planetGeneratorData);
         var comp = GetComponent<MeshFilter>();
         comp.mesh = PlanetRenderer.createMesh(planet);

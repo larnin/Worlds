@@ -41,14 +41,14 @@ public class Pair<T, U>
     }
 }
 
-class NextQueueNode : FastPriorityQueueNode
-{
-    public NextQueueNode(int _index)
-    {
-        index = _index;
-    }
-    public int index;
-}
+//class NextQueueNode : FastPriorityQueueNode
+//{
+//    public NextQueueNode(int _index)
+//    {
+//        index = _index;
+//    }
+//    public int index;
+//}
 
 [Serializable]
 public class PlanetGeneratorData
@@ -414,7 +414,7 @@ public static class PlanetGenerator
 
         bool[] setPoints = new bool[planet.points.Length];
         bool[] nextPoints = new bool[planet.points.Length];
-        FastPriorityQueue<NextQueueNode> next = new FastPriorityQueue<NextQueueNode>(planet.points.Length);
+        LinkedList<NextValue> next = new LinkedList<NextValue>();
         float[] newHeight = new float[planet.points.Length];
         
         for (int i = 0; i < planet.points.Length; i++)
@@ -437,7 +437,7 @@ public static class PlanetGenerator
         }
 
         if (next.Count == 0)
-            setPoints[0] = true;
+            setPoints[new UniformIntDistribution(0, setPoints.Length).Next(gen)] = true;
 
         for(int i  = 0; i < planet.points.Length; i++)
         {
@@ -446,7 +446,7 @@ public static class PlanetGenerator
                 foreach(var p in planet.points[i].connectedPoints)
                     if(!setPoints[p] && !nextPoints[p])
                     {
-                        next.Enqueue(new NextQueueNode(p), 0);
+                        next.AddLast(new NextValue(p, 0));
                         nextPoints[p] = true;
                     }
             }
@@ -454,7 +454,8 @@ public static class PlanetGenerator
         
         while(next.Count > 0)
         {
-            var current = next.Dequeue().index;
+            var current = next.First.Value.index;
+            next.RemoveFirst();
             nextPoints[current] = false;
             setPoints[current] = true;
 
@@ -472,54 +473,52 @@ public static class PlanetGenerator
 
             float d = (planet.points[bestIndex].point - planet.points[current].point).magnitude;
             float dHeight = Mathf.Abs(planet.points[bestIndex].height - planet.points[current].height);
-            float sign = planet.points[current].biomeID == oceanBiomeIndex ? -1 : 1;
             if (planet.points[current].biomeID == lakeBiomeIndex && lakeBiomeIndex >= 0)
                 newHeight[current] = newHeight[bestIndex];
-            else newHeight[current] = newHeight[bestIndex] + (d * (forcedOffsetElevation + distrib.Next(gen)) + dHeight) * sign;
+            else newHeight[current] = newHeight[bestIndex] + d * (forcedOffsetElevation + distrib.Next(gen)) + dHeight;
 
             if (!haveCheckedNotsetPoint)
                 continue;
 
-            foreach (var p in planet.points[current].connectedPoints)
+            if (next.First == null || newHeight[current] <= next.First.Value.height)
             {
-                if (!setPoints[p] && !nextPoints[p])
+                foreach (var p in planet.points[current].connectedPoints)
                 {
-                    next.Enqueue(new NextQueueNode(p), newHeight[current]);
-                    nextPoints[p] = true;
+                    if (!setPoints[p] && !nextPoints[p])
+                    {
+                        next.AddFirst(new NextValue(p, newHeight[current]));
+                        nextPoints[p] = true;
+                    }
                 }
             }
+            else
+            {
+                var item = next.Last;
+                while (item.Previous != null)
+                {
+                    if (item.Value.height <= newHeight[current])
+                        break;
+                    item = item.Previous;
+                }
 
-            //if (next.First == null || newHeight[current] <= next.First.Value.height)
-            //{
-            //    foreach (var p in planet.points[current].connectedPoints)
-            //    {
-            //        if (!setPoints[p] && !nextPoints[p])
-            //        {
-            //            next.Enqueue(new NextQueueNode(p), newHeight[current]);
-            //            next.AddFirst(new NextValue(p, newHeight[current]));
-            //            nextPoints[p] = true;
-            //        }
-            //    }
-            //}
-            //else
-            //{
-            //    var item = next.Last;
-            //    while (item.Previous != null)
-            //    {
-            //        if (item.Value.height <= newHeight[current])
-            //            break;
-            //        item = item.Previous;
-            //    }
-
-            //    foreach (var p in planet.points[current].connectedPoints)
-            //    {
-            //        if (!setPoints[p] && !nextPoints[p])
-            //        {
-            //            next.AddAfter(item, new NextValue(p, newHeight[current]));
-            //            nextPoints[p] = true;
-            //        }
-            //    }
-            //}
+                foreach (var p in planet.points[current].connectedPoints)
+                {
+                    if (!setPoints[p] && !nextPoints[p])
+                    {
+                        next.AddAfter(item, new NextValue(p, newHeight[current]));
+                        nextPoints[p] = true;
+                    }
+                }
+            }
+        }
+        
+        if (oceanBiomeIndex >= 0)
+        {
+            for (int i = 0; i < newHeight.Length; i++)
+            {
+                if (planet.points[i].biomeID == oceanBiomeIndex)
+                    newHeight[i] *= -1;
+        }
         }
 
         UnityEngine.Debug.Log("\tElapsed heights " + sw.Elapsed); sw.Reset(); sw.Start();
@@ -540,6 +539,7 @@ public static class PlanetGenerator
 
         float min = Mathf.Min(newHeight);
         float max = Mathf.Max(newHeight);
+        UnityEngine.Debug.Log("Min/max " + min + " " + max);
 
         for (int i = 0; i < newHeight.Length; i++)
         {

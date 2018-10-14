@@ -482,8 +482,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   planetGeneratorData:
-    seed: 3
-    sphereDivisionLevel: 10
+    seed: 14587
+    sphereDivisionLevel: 64
     planetScale: 5
     elevationData:
       elevationCurve:
@@ -501,11 +501,11 @@ MonoBehaviour:
         - serializedVersion: 3
           time: 0
           value: 0
-          inSlope: 2.0924299
+          inSlope: 1.3543088
           outSlope: 0.30905282
           tangentMode: 1
           weightedMode: 0
-          inWeight: 0.11696801
+          inWeight: 0.11163895
           outWeight: 0.6437054
         - serializedVersion: 3
           time: 1
