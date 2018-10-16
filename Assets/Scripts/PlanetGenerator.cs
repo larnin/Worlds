@@ -730,6 +730,10 @@ public static class PlanetGenerator
                 planet.points[index].moisture = Mathf.Max(planet.points[index].moisture, m);
                 setPoints[index] = true;
             }
+        for (int i = 0; i < planet.points.Length; i++)
+            if (planet.points[i].biomeID >= 0)
+                setPoints[i] = true;
+
         for (int i = 0; i < setPoints.Length; i++)
             if (setPoints[i])
                 foreach (var p in planet.points[i].connectedPoints)
