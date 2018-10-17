@@ -379,15 +379,15 @@ public static class PlanetGenerator
             planet.points[i].height = (planet.points[i].height - minValue) / (maxValue - minValue) * 2 - 1; // range [-1,1]
     }
 
-    struct NextValue
+    class NextValue
     {
-        public NextValue(int _index, float _height)
+        public NextValue(int _index, float _weight)
         {
             index = _index;
-            height = _height;
+            weight = _weight;
         }
         public int index;
-        public float height;
+        public float weight;
     }
 
     static void makeFinalElevation(PlanetData planet, float minHeight, float maxHeight, float forcedOffsetElevation, float oceanLevel, float lakeSize, AnimationCurve elevationCurve, IRandomGenerator gen, float randomizeElevation)
@@ -480,7 +480,7 @@ public static class PlanetGenerator
             if (!haveCheckedNotsetPoint)
                 continue;
 
-            if (next.First == null || newHeight[current] <= next.First.Value.height)
+            if (next.First == null || newHeight[current] <= next.First.Value.weight)
             {
                 foreach (var p in planet.points[current].connectedPoints)
                 {
@@ -496,7 +496,7 @@ public static class PlanetGenerator
                 var item = next.Last;
                 while (item.Previous != null)
                 {
-                    if (item.Value.height <= newHeight[current])
+                    if (item.Value.weight <= newHeight[current])
                         break;
                     item = item.Previous;
                 }
@@ -617,25 +617,6 @@ public static class PlanetGenerator
 
     static void makeRivers(PlanetData planet, IRandomGenerator gen, int riverNb, int riverTestCount)
     {
-        bool[] possiblePositions = new bool[planet.points.Length];
-        for (int i = 0; i < planet.points.Length; i++)
-        {
-            if (planet.points[i].biomeID >= 0)
-            {
-                possiblePositions[i] = false;
-                continue;
-            }
-            bool connectedNotOk = false;
-            foreach (var p in planet.points[i].connectedPoints)
-            {
-                if (planet.points[p].biomeID >= 0)
-                {
-                    connectedNotOk = true;
-                    break;
-                }
-            }
-            possiblePositions[i] = !connectedNotOk;
-        }
         
         var dStart = new UniformIntDistribution(0, planet.points.Length);
 
@@ -646,7 +627,14 @@ public static class PlanetGenerator
             for (int j = 0; j < riverTestCount; j++)
             {
                 int index = dStart.Next(gen);
-                if (possiblePositions[j] && (currentIndex < 0 || planet.points[currentIndex].height < planet.points[index].height))
+                bool isOk = true;
+                if (planet.points[index].biomeID >= 0 || planet.points[index].riverInfo.isRiver())
+                    isOk = false;
+                foreach(int p in planet.points[index].connectedPoints)
+                    if(planet.points[p].biomeID >= 0 || planet.points[p].riverInfo.isRiver())
+                        isOk = false;
+
+                if (isOk && (currentIndex < 0 || planet.points[currentIndex].height < planet.points[index].height))
                     currentIndex = index;
             }
 
@@ -685,7 +673,6 @@ public static class PlanetGenerator
                 }
 
                 planet.points[nextPoint].riverInfo.width = planet.points[currentIndex].riverInfo.width + 1;
-                possiblePositions[nextPoint] = false;
                 currentIndex = nextPoint;
             }
         }
@@ -699,9 +686,46 @@ public static class PlanetGenerator
 
     static void makeMoisture(PlanetData planet, float riverMoistureMin, float moisturePropagationResistance)
     {
-        List<int> next = new List<int>();
+        LinkedList<NextValue> next = new LinkedList<NextValue>();
         bool[] setPoints = new bool[planet.points.Length];
         bool[] nextPoints = new bool[planet.points.Length];
+
+        Func<float, LinkedListNode<NextValue>> getInsertPos = v =>
+        {
+            if (next.First == null || v > next.First.Value.weight)
+            {
+                return next.First;
+            }
+
+            var item = next.Last;
+            while (item.Previous != null)
+            {
+                if (item.Value.weight >= v)
+                    return item;
+                item = item.Previous;
+            }
+            return next.First;
+        };
+
+        Action<NextValue> addNext = v => {
+
+            if(next.First == null || v.weight > next.First.Value.weight)
+            {
+                next.AddFirst(v);
+                return;
+            }
+
+            var item = next.Last;
+            while (item.Previous != null)
+            {
+                if (item.Value.weight >= v.weight)
+                    break;
+                item = item.Previous;
+            }
+            next.AddAfter(item, v);
+        };
+
+        
 
         float maxWidth = 0;
         for (int i = 0; i < planet.points.Length; i++)
@@ -724,15 +748,15 @@ public static class PlanetGenerator
                     if (!setPoints[p] && !nextPoints[p])
                     {
                         nextPoints[p] = true;
-                        next.Add(p);
+                        addNext(new NextValue(p, w));
                     }
             }
         }
         
         while(next.Count > 0)
         {
-            int current = next[0];
-            next.RemoveAt(0);
+            int current = next.First.Value.index;
+            next.RemoveFirst();
             nextPoints[current] = false;
             setPoints[current] = true;
 
@@ -749,6 +773,8 @@ public static class PlanetGenerator
             float d = (planet.points[bestMoistureIndex].point - planet.points[current].point).magnitude;
             planet.points[current].moisture = Mathf.Max(0, planet.points[bestMoistureIndex].moisture - d * moisturePropagationResistance);
 
+            var pos = getInsertPos(planet.points[current].moisture);
+
             if (planet.points[current].moisture > 0)
             {
                 foreach (var p in planet.points[current].connectedPoints)
@@ -756,7 +782,11 @@ public static class PlanetGenerator
                     if (!setPoints[p] && !nextPoints[p])
                     {
                         nextPoints[p] = true;
-                        next.Add(p);
+                        if (pos == null)
+                            next.AddFirst(new NextValue(p, planet.points[current].moisture));
+                        else if (pos.Value.weight > planet.points[current].moisture)
+                            next.AddAfter(pos, new NextValue(p, planet.points[current].moisture));
+                        else next.AddBefore(pos, new NextValue(p, planet.points[current].moisture));
                     }
                 }
             }
