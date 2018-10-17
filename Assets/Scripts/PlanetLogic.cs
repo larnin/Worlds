@@ -18,16 +18,18 @@ public class PlanetLogic : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.A))
             generate();
 
-        if(m_planet != null)
+        if (m_planet != null)
         {
-            for (int i = 0; i < m_planet.rivers.Count; i++)
-                for (int j = 0; j < m_planet.rivers[i].Length - 1; j++)
-                {
-                    int p1 = m_planet.rivers[i][j].index;
-                    int p2 = m_planet.rivers[i][j + 1].index;
-                    UnityEngine.Debug.DrawLine(m_planet.points[p1].point * (m_planet.points[p1].height + 1.01f) * m_planet.scale
-                                             , m_planet.points[p2].point * (m_planet.points[p2].height + 1.01f) * m_planet.scale, Color.red);
-                }
+            for(int i = 0; i < m_planet.points.Length; i++)
+            {
+                if (!m_planet.points[i].riverInfo.isRiver())
+                    continue;
+                int p = m_planet.points[i].riverInfo.nextIndex;
+                if (p < 0)
+                    continue;
+                UnityEngine.Debug.DrawLine(m_planet.points[i].point * (m_planet.points[i].height + 1.001f) * m_planet.scale
+                                             , m_planet.points[p].point * (m_planet.points[p].height + 1.001f) * m_planet.scale, Color.red);
+            }
         }
     }
 

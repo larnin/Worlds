@@ -113,6 +113,17 @@ public struct Triangle
     }
 }
 
+public struct RiverPoint
+{
+    public float width;
+    public int nextIndex;
+
+    public bool isRiver()
+    {
+        return width > 0;
+    }
+}
+
 public struct PlanetPoint
 {
     public Vector3 point;
@@ -120,18 +131,7 @@ public struct PlanetPoint
     public float height;
     public float moisture;
     public List<int> connectedPoints;
-}
-
-public struct RiverPoint
-{
-    public RiverPoint(float _width, int _index)
-    {
-        width = _width;
-        index = _index;
-    }
-
-    public float width;
-    public int index;
+    public RiverPoint riverInfo;
 }
 
 public class PlanetData
@@ -139,7 +139,6 @@ public class PlanetData
     public float scale;
     public PlanetPoint[] points;
     public Triangle[] triangles;
-    public List<RiverPoint[]> rivers = new List<RiverPoint[]>();
     public Biome[] biomes;
 }
 
@@ -195,6 +194,7 @@ public static class PlanetGenerator
             planet.points[i].point = sub.points[i];
             planet.points[i].biomeID = -1;
             planet.points[i].connectedPoints = new List<int>();
+            planet.points[i].riverInfo.nextIndex = -1;
         }
         for (int i = 0; i < planet.triangles.Length; i++)
             planet.triangles[i] = sub.triangles[i];
@@ -539,7 +539,6 @@ public static class PlanetGenerator
 
         float min = Mathf.Min(newHeight);
         float max = Mathf.Max(newHeight);
-        UnityEngine.Debug.Log("Min/max " + min + " " + max);
 
         for (int i = 0; i < newHeight.Length; i++)
         {
@@ -632,88 +631,70 @@ public static class PlanetGenerator
                 if (planet.points[p].biomeID >= 0)
                 {
                     connectedNotOk = true;
-                    possiblePositions[i] = false;
                     break;
                 }
             }
-            if (connectedNotOk)
-                continue;
-            possiblePositions[i] = true;
+            possiblePositions[i] = !connectedNotOk;
         }
         
         var dStart = new UniformIntDistribution(0, planet.points.Length);
 
-        for (int i = 0; i < riverNb; i++)
+        for(int i = 0; i < riverNb; i++)
         {
-            int startIndex = -1;
+            int currentIndex = -1;
+
             for (int j = 0; j < riverTestCount; j++)
             {
                 int index = dStart.Next(gen);
-                if (possiblePositions[j] && (startIndex < 0 || planet.points[startIndex].height < planet.points[index].height))
-                    startIndex = index;
+                if (possiblePositions[j] && (currentIndex < 0 || planet.points[currentIndex].height < planet.points[index].height))
+                    currentIndex = index;
             }
-            if (startIndex < 0)
+
+            if (currentIndex < 0)
                 continue;
 
-            List<RiverPoint> points = new List<RiverPoint>();
-            points.Add(new RiverPoint(1, startIndex));
+            planet.points[currentIndex].riverInfo.width = 1;
+            
+            while(true)
+            {
+                int nextPoint = -1;
+                foreach(var p in planet.points[currentIndex].connectedPoints)
+                {
+                    if (nextPoint < 0 || planet.points[nextPoint].height > planet.points[p].height)
+                        nextPoint = p;
+                }
 
-            while (true)
-            {
-                int bestIndex = -1;
-                int current = points[points.Count - 1].index;
-                foreach (var p in planet.points[current].connectedPoints)
-                {
-                    if (planet.points[p].height < planet.points[current].height && (bestIndex == -1 || planet.points[p].height < planet.points[bestIndex].height))
-                        bestIndex = p;
-                }
-                if (bestIndex < 0)
+                if (planet.points[nextPoint].height > planet.points[currentIndex].height)
                     break;
-                points.Add(new RiverPoint(points[points.Count - 1].width + 1, bestIndex));
-                if (!possiblePositions[bestIndex])
+
+                planet.points[currentIndex].riverInfo.nextIndex = nextPoint;
+
+                if (planet.points[nextPoint].biomeID >= 0)
                     break;
-            }
-            var river = new RiverPoint[points.Count];
-            for (int j = 0; j < points.Count; j++)
-            {
-                river[j] = points[j];
-                possiblePositions[points[j].index] = false;
-            }
-            var lastPoint = river[river.Length - 1];
-            int currentRiverIndex = -1;
-            bool found = false;
-            for (int j = 0; j < planet.rivers.Count; j++)
-            {
-                if (j == currentRiverIndex)
-                    continue;
-                for (int k = 0; k < planet.rivers[j].Length; k++)
+
+                if(planet.points[nextPoint].riverInfo.isRiver())
                 {
-                    if (found)
-                        planet.rivers[j][k].width += lastPoint.width;
-                    else
+                    int current = nextPoint;
+                    float width = planet.points[current].riverInfo.width;
+                    do
                     {
-                        if (planet.rivers[j][k].index == lastPoint.index)
-                            found = true;
-                        planet.rivers[j][k].width += lastPoint.width;
+                        planet.points[current].riverInfo.width += width;
+                        current = planet.points[current].riverInfo.nextIndex;
                     }
+                    while (current >= 0);
                 }
-                if (found)
-                {
-                    found = false;
-                    currentRiverIndex = j;
-                    j = -1;
-                }
+
+                planet.points[nextPoint].riverInfo.width = planet.points[currentIndex].riverInfo.width + 1;
+                possiblePositions[nextPoint] = false;
+                currentIndex = nextPoint;
             }
-            planet.rivers.Add(river);
         }
 
-        float maxRiverSize = 0;
-        for (int j = 0; j < planet.rivers.Count; j++)
-            for (int k = 0; k < planet.rivers[j].Length; k++)
-                maxRiverSize = Mathf.Max(maxRiverSize, planet.rivers[j][k].width);
-        for (int j = 0; j < planet.rivers.Count; j++)
-            for (int k = 0; k < planet.rivers[j].Length; k++)
-                planet.rivers[j][k].width /= maxRiverSize;
+        float maxWidth = 0;
+        for (int i = 0; i < planet.points.Length; i++)
+            maxWidth = Mathf.Max(maxWidth, planet.points[i].riverInfo.width);
+        for (int i = 0; i < planet.points.Length; i++)
+            planet.points[i].riverInfo.width /= maxWidth;
     }
 
     static void makeMoisture(PlanetData planet, float riverMoistureMin, float moisturePropagationResistance)
@@ -722,26 +703,31 @@ public static class PlanetGenerator
         bool[] setPoints = new bool[planet.points.Length];
         bool[] nextPoints = new bool[planet.points.Length];
 
-        foreach(var river in planet.rivers)
-            for(int i = 0; i < river.Length; i++)
-            {
-                int index = river[i].index;
-                float m = i / river.Length * (1 - riverMoistureMin) + riverMoistureMin;
-                planet.points[index].moisture = Mathf.Max(planet.points[index].moisture, m);
-                setPoints[index] = true;
-            }
+        float maxWidth = 0;
         for (int i = 0; i < planet.points.Length; i++)
+        {
             if (planet.points[i].biomeID >= 0)
                 setPoints[i] = true;
+            maxWidth = Mathf.Max(maxWidth, planet.points[i].riverInfo.width);
+        }
 
-        for (int i = 0; i < setPoints.Length; i++)
-            if (setPoints[i])
+        for (int i = 0; i < planet.points.Length; i++)
+        {
+            if(planet.points[i].riverInfo.isRiver())
+            {
+                float w = planet.points[i].riverInfo.width;
+                w = w / maxWidth * (1 - riverMoistureMin) + riverMoistureMin;
+                setPoints[i] = true;
+                planet.points[i].moisture = w;
+
                 foreach (var p in planet.points[i].connectedPoints)
                     if (!setPoints[p] && !nextPoints[p])
                     {
                         nextPoints[p] = true;
                         next.Add(p);
                     }
+            }
+        }
         
         while(next.Count > 0)
         {
