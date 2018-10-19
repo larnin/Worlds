@@ -7,7 +7,7 @@ using UnityEngine;
 
 public static class PlanetRenderer
 {
-    public static Mesh createMesh(PlanetData planet)
+    public static Mesh createSurfaceMesh(PlanetData planet)
     {
         Stopwatch sw = new Stopwatch();
         sw.Start();
@@ -47,6 +47,75 @@ public static class PlanetRenderer
 
         sw.Stop();
         UnityEngine.Debug.Log("Elapsed renderer " + sw.Elapsed);
+
+        return m;
+    }
+
+    public static Mesh CreateWaterMesh(PlanetData planet)
+    {
+        Stopwatch sw = new Stopwatch();
+        sw.Start();
+
+        int oceanIndex = -1;
+        for(int i = 0; i < planet.biomes.Length; i++)
+            if(planet.biomes[i].isOceanBiome)
+            {
+                oceanIndex = i;
+                break;
+            }
+        if (oceanIndex < 0)
+            return null;
+
+        int size = 0;
+        for(int i = 0; i < planet.triangles.Length; i++)
+        {
+            int b1 = planet.points[planet.triangles[i].v1].biomeID;
+            int b2 = planet.points[planet.triangles[i].v2].biomeID;
+            int b3 = planet.points[planet.triangles[i].v3].biomeID;
+            if (b1 == oceanIndex || b2 == oceanIndex || b3 == oceanIndex)
+                size++;
+        }
+
+        int[] triangles = new int[size * 3];
+        Color32[] colors = new Color32[size * 3];
+        Vector3[] points = new Vector3[size * 3];
+
+        int index = 0;
+        for (int i = 0; i < planet.triangles.Length; i++)
+        {
+            int b1 = planet.points[planet.triangles[i].v1].biomeID;
+            int b2 = planet.points[planet.triangles[i].v2].biomeID;
+            int b3 = planet.points[planet.triangles[i].v3].biomeID;
+            if (b1 != oceanIndex && b2 != oceanIndex && b3 != oceanIndex)
+                continue;
+
+            points[3 * index] = planet.points[planet.triangles[i].v1].point * planet.scale;
+            points[3 * index + 1] = planet.points[planet.triangles[i].v2].point * planet.scale;
+            points[3 * index + 2] = planet.points[planet.triangles[i].v3].point * planet.scale;
+
+            var biomeID = biomeIndexOfTriangle(planet, i);
+            Color biomeColor = planet.biomes[oceanIndex].color;
+            colors[3 * index] = biomeColor;
+            colors[3 * index + 1] = biomeColor;
+            colors[3 * index + 2] = biomeColor;
+
+            index++;
+        }
+
+        for (int i = 0; i < size * 3; i++)
+            triangles[i] = i;
+
+        Mesh m = new Mesh();
+        m.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+        m.vertices = points;
+        m.colors32 = colors;
+        m.triangles = triangles;
+        m.RecalculateNormals();
+        m.RecalculateTangents();
+        m.RecalculateBounds();
+
+        sw.Stop();
+        UnityEngine.Debug.Log("Elapsed water renderer " + sw.Elapsed);
 
         return m;
     }

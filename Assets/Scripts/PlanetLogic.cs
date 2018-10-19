@@ -38,11 +38,13 @@ public class PlanetLogic : MonoBehaviour
         Stopwatch sw = new Stopwatch();
         sw.Start();
 
-        planetGeneratorData.seed = seed++;
+        //planetGeneratorData.seed = seed++;
         //planetGeneratorData.sphereDivisionLevel = seed++;
         var planet = PlanetGenerator.generate(planetGeneratorData);
         var comp = GetComponent<MeshFilter>();
-        comp.mesh = PlanetRenderer.createMesh(planet);
+        comp.mesh = PlanetRenderer.createSurfaceMesh(planet);
+        var comp2 = transform.Find("Water").GetComponent<MeshFilter>();
+        comp2.mesh = PlanetRenderer.CreateWaterMesh(planet);
         m_planet = planet;
 
         sw.Stop();

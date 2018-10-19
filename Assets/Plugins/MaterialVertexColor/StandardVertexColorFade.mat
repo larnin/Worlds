@@ -8,8 +8,9 @@ Material:
   m_PrefabInternal: {fileID: 0}
   m_Name: StandardVertexColorFade
   m_Shader: {fileID: 4800000, guid: 466466a0175d2e340b26817200194fc0, type: 3}
-  m_ShaderKeywords: _ALPHABLEND_ON _EMISSION _VERTEXCOLOR
-  m_LightmapFlags: 1
+  m_ShaderKeywords: _ALPHABLEND_ON _GLOSSYREFLECTIONS_OFF _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A
+    _VERTEXCOLOR_LERP
+  m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: 3000
@@ -61,20 +62,20 @@ Material:
     - _DetailNormalMapScale: 1
     - _DstBlend: 10
     - _EmissionScaleUI: 0
-    - _GlossMapScale: 1
-    - _Glossiness: 0.5
-    - _GlossyReflections: 1
-    - _IntensityVC: 1
-    - _Metallic: 0
+    - _GlossMapScale: 0.737
+    - _Glossiness: 0.673
+    - _GlossyReflections: 0
+    - _IntensityVC: 0.886
+    - _Metallic: 1
     - _Mode: 2
     - _OcclusionStrength: 1
     - _Parallax: 0.02
-    - _SmoothnessTextureChannel: 0
+    - _SmoothnessTextureChannel: 1
     - _SpecularHighlights: 1
     - _SrcBlend: 5
     - _UVSec: 0
     - _ZWrite: 0
     m_Colors:
     - _Color: {r: 1, g: 1, b: 1, a: 1}
-    - _EmissionColor: {r: 0, g: 0, b: 0, a: 0}
+    - _EmissionColor: {r: 0, g: 1, b: 0, a: 0}
     - _EmissionColorUI: {r: 1, g: 1, b: 1, a: 1}

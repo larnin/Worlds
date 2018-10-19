@@ -417,9 +417,10 @@ public static class PlanetGenerator
         LinkedList<NextValue> next = new LinkedList<NextValue>();
         float[] newHeight = new float[planet.points.Length];
         
+        int loop = 0;
         for (int i = 0; i < planet.points.Length; i++)
         {
-            if (planet.points[i].biomeID >= 0 || planet.points[i].height < oceanLevel)
+            if (planet.points[i].biomeID == oceanBiomeIndex)
                 continue;
 
             bool isBorder = false;
@@ -434,6 +435,7 @@ public static class PlanetGenerator
                 continue;
 
             setPoints[i] = true;
+            loop++;
         }
 
         if (next.Count == 0)
@@ -451,9 +453,10 @@ public static class PlanetGenerator
                     }
             }
         }
-        
+
         while(next.Count > 0)
         {
+            loop++;
             var current = next.First.Value.index;
             next.RemoveFirst();
             nextPoints[current] = false;
@@ -468,7 +471,8 @@ public static class PlanetGenerator
                     if (bestIndex < 0 || newHeight[p] < newHeight[bestIndex])
                         bestIndex = p;
                 }
-                else if(!nextPoints[p]) haveCheckedNotsetPoint = true;
+                else if(!nextPoints[p])
+                    haveCheckedNotsetPoint = true;
             }
 
             float d = (planet.points[bestIndex].point - planet.points[current].point).magnitude;
@@ -511,6 +515,7 @@ public static class PlanetGenerator
                 }
             }
         }
+        UnityEngine.Debug.Log("loop " + loop);
         
         if (oceanBiomeIndex >= 0)
         {
