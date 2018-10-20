@@ -433,7 +433,7 @@ public static class PlanetGenerator
             }
             if (!isBorder)
                 continue;
-
+            
             setPoints[i] = true;
             loop++;
         }
@@ -530,7 +530,7 @@ public static class PlanetGenerator
 
         for (int i = 0; i < planet.points.Length; i++)
         {
-            if (newHeight[i] == 0)
+            if (newHeight[i] == 0 && planet.points[i].biomeID < 0)
                 continue;
 
             float sum = 0;
