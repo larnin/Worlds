@@ -23,7 +23,7 @@ public static class PlanetRenderer
             points[3 * i + 1] = planet.points[planet.triangles[i].v2].point * (planet.points[planet.triangles[i].v2].height + 1) * planet.scale;
             points[3 * i + 2] = planet.points[planet.triangles[i].v3].point * (planet.points[planet.triangles[i].v3].height + 1) * planet.scale;
 
-            var biomeID = biomeIndexOfTriangle(planet, i);
+            var biomeID = PlanetEx.biomeIndexOfTriangle(planet, i);
             Color biomeColor;
             if (biomeID < 0)
                 biomeColor = new Color(255, 255, 255);
@@ -93,7 +93,7 @@ public static class PlanetRenderer
             points[3 * index + 1] = planet.points[planet.triangles[i].v2].point * planet.scale;
             points[3 * index + 2] = planet.points[planet.triangles[i].v3].point * planet.scale;
 
-            var biomeID = biomeIndexOfTriangle(planet, i);
+            var biomeID = PlanetEx.biomeIndexOfTriangle(planet, i);
             Color biomeColor = planet.biomes[oceanIndex].color;
             colors[3 * index] = biomeColor;
             colors[3 * index + 1] = biomeColor;
@@ -173,8 +173,8 @@ public static class PlanetRenderer
                         List<Vector3> previous = new List<Vector3>();
                         foreach (var pt in planet.points[i].riverInfo.previousIndexs)
                             previous.Add(planet.points[pt].point);
-                        var left = getLeft(previous, planet.points[i].point, planet.points[nextIndex].point, planet.points[i].point.normalized);
-                        var right = getRight(previous, planet.points[i].point, planet.points[nextIndex].point, planet.points[i].point.normalized);
+                        var left = MathEx.getLeft(previous, planet.points[i].point, planet.points[nextIndex].point, planet.points[i].point.normalized);
+                        var right = MathEx.getRight(previous, planet.points[i].point, planet.points[nextIndex].point, planet.points[i].point.normalized);
                         var hLeft = Vector3.Cross(planet.points[nextIndex].point - left, planet.points[i].point).normalized;
                         var hRight = Vector3.Cross(planet.points[nextIndex].point - right, planet.points[i].point).normalized;
 
@@ -212,8 +212,8 @@ public static class PlanetRenderer
                     break;
                 default:
                     {
-                        var left = getLeft(nextPoints, planet.points[nextIndex].point, planet.points[i].point, planet.points[nextIndex].point.normalized);
-                        var right = getRight(nextPoints, planet.points[nextIndex].point, planet.points[i].point, planet.points[nextIndex].point.normalized);
+                        var left = MathEx.getLeft(nextPoints, planet.points[nextIndex].point, planet.points[i].point, planet.points[nextIndex].point.normalized);
+                        var right = MathEx.getRight(nextPoints, planet.points[nextIndex].point, planet.points[i].point, planet.points[nextIndex].point.normalized);
                         var hLeft = Vector3.Cross(planet.points[i].point - left, planet.points[nextIndex].point).normalized;
                         var hRight = Vector3.Cross(planet.points[i].point - right, planet.points[nextIndex].point).normalized;
 
@@ -267,72 +267,18 @@ public static class PlanetRenderer
         return m;
     }
 
-    static Vector3 getLeft(List<Vector3> points, Vector3 center, Vector3 basePoint, Vector3 vertical)
+    public static void CreateStructures(PlanetData planet, Transform structuresParent)
     {
-        if (points.Count == 0)
-            return basePoint;
+        Stopwatch sw = new Stopwatch();
+        sw.Start();
 
-        Plane p = new Plane(vertical, center);
-        var basePos = p.ClosestPointOnPlane(basePoint);
-        basePos = (basePos - center).normalized;
-
-        float bestValue = float.MaxValue;
-        int bestIndex = -1;
-        for(int i = 0; i < points.Count; i++)
+        for (int i = 0; i < planet.structures.Count; i++)
         {
-            var pos = p.ClosestPointOnPlane(points[i]);
-            pos = (pos - center).normalized;
-            float value = Vector3.Dot(pos, basePos);
-            if(value < bestValue)
-            {
-                bestValue = value;
-                bestIndex = i;
-            }
-        }
-        if (bestIndex < 0)
-            return basePoint;
-        return points[bestIndex];
-    }
-
-    static Vector3 getRight(List<Vector3> points, Vector3 center, Vector3 basePoint, Vector3 vertical)
-    {
-        return getLeft(points, center, basePoint, -vertical);
-    }
-
-    static int biomeIndexOfTriangle(PlanetData planet, int triangleIndex)
-    {
-        var t = planet.triangles[triangleIndex];
-
-        int b1 = planet.points[t.v1].biomeID;
-        int b2 = planet.points[t.v2].biomeID;
-        int b3 = planet.points[t.v3].biomeID;
-
-        if (b1 < 0 || b2 < 0 || b3 < 0)
-            return -1;
-
-        if (planet.biomes[b1].isOceanBiome || planet.biomes[b2].isOceanBiome || planet.biomes[b3].isOceanBiome)
-        {
-            return planet.biomes[b1].isOceanBiome ? b1 : planet.biomes[b2].isOceanBiome ? b2 : b3;
-        }
-        if (planet.biomes[b1].isLakeBiome && planet.biomes[b2].isLakeBiome && planet.biomes[b3].isLakeBiome)
-            return b1;
-        else if(planet.biomes[b1].isLakeBiome || planet.biomes[b2].isLakeBiome || planet.biomes[b3].isLakeBiome)
-        {
-            return !planet.biomes[b1].isLakeBiome ? b1 : !planet.biomes[b2].isLakeBiome ? b2 : b3;
+            var obj = GameObject.Instantiate(planet.structuresPrefabs[planet.structures[i].structureIndex], structuresParent);
+            obj.transform.localPosition = planet.structures[i].position;
+            obj.transform.localRotation = planet.structures[i].rotation;
         }
 
-        if (b1 == b2)
-            return b1;
-        if (b2 == b3)
-            return b2;
-        if (b3 == b1)
-            return b3;
-
-        int t3 = triangleIndex % 3;
-        if (t3 == 0)
-            return b1;
-        if (t3 == 1)
-            return b2;
-        return b3;
+        UnityEngine.Debug.Log("Elapsed structures renderer " + sw.Elapsed);
     }
 }

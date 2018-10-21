@@ -35,6 +35,8 @@ public class PlanetLogic : MonoBehaviour
         compWater.mesh = PlanetRenderer.CreateWaterMesh(planet);
         var compRivers = transform.Find("Rivers").GetComponent<MeshFilter>();
         compRivers.mesh = PlanetRenderer.CreateRiversMesh(planet);
+        var transformStruct = transform.Find("Structures");
+        PlanetRenderer.CreateStructures(planet, transformStruct);
         m_planet = planet;
 
         sw.Stop();

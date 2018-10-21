@@ -7,39 +7,6 @@ using NRand;
 using System.Diagnostics;
 using Sirenix.OdinInspector;
 
-public class Pair<T, U>
-{
-    public Pair(T _first, U _second)
-    {
-        first = _first;
-        second = _second;
-    }
-
-    public T first;
-    public U second;
-
-    public override bool Equals(object obj)
-    {
-        if ((obj == null) || !this.GetType().Equals(obj.GetType()))
-        {
-            return false;
-        }
-        else
-        {
-            Pair<T, U> p = (Pair<T, U>)obj; 
-            return EqualityComparer<T>.Default.Equals(first, p.first)&& EqualityComparer<U>.Default.Equals(second, p.second);
-        }
-    }
-
-    public override int GetHashCode()
-    {
-        int hash = 5;
-        hash = hash * 11 + first.GetHashCode();
-        hash = hash * 7 + second.GetHashCode();
-        return hash;
-    }
-}
-
 [Serializable]
 public class PlanetGeneratorData
 {
@@ -78,65 +45,6 @@ public class PlanetGeneratorData
     public float riverMoreHeight = 0.01f;
 }
 
-[Serializable]
-public class Biome
-{
-    public string name;
-    [HorizontalGroup, LabelWidth(100),TableColumnWidth(30)]
-    public bool isOceanBiome = false;
-    [HorizontalGroup, LabelWidth(100)]
-    public bool isLakeBiome = false;
-    [HorizontalGroup, LabelWidth(100)]
-    public bool isRiverBiome = false;
-    public Color color;
-    public float moisture;
-    public float height;
-}
-
-public struct Triangle
-{
-    public int v1;
-    public int v2;
-    public int v3;
-
-    public Triangle(int _1, int _2, int _3)
-    {
-        v1 = _1; v2 = _2; v3 = _3;
-    }
-}
-
-public struct RiverPoint
-{
-    public float width;
-    public int nextIndex;
-    public List<int> previousIndexs;
-
-    public bool isRiver()
-    {
-        return width > 0;
-    }
-}
-
-public struct PlanetPoint
-{
-    public Vector3 point;
-    public int biomeID;
-    public float height;
-    public float moisture;
-    public List<int> connectedPoints;
-    public RiverPoint riverInfo;
-}
-
-public class PlanetData
-{
-    public float scale;
-    public float riverWidth;
-    public float riverMoreHeight;
-    public PlanetPoint[] points;
-    public Triangle[] triangles;
-    public Biome[] biomes;
-}
-
 public static class PlanetGenerator
 {
     public static PlanetData generate(PlanetGeneratorData data)
@@ -163,6 +71,8 @@ public static class PlanetGenerator
         UnityEngine.Debug.Log("Elapsed moisture " + sw.Elapsed); sw.Reset(); sw.Start();
         makeBiomes(planet, data.elevationData.maxHeight);
         UnityEngine.Debug.Log("Elapsed biomes " + sw.Elapsed); sw.Reset(); sw.Start();
+        makeStructures(planet, gen);
+        UnityEngine.Debug.Log("Elapsed structures " + sw.Elapsed); sw.Reset(); sw.Start();
 
         return planet;
     }
@@ -831,6 +741,60 @@ public static class PlanetGenerator
             if (bestBiomeIndex < 0)
                 continue;
             planet.points[i].biomeID = bestBiomeIndex;
+        }
+    }
+
+    static void makeStructures(PlanetData planet, IRandomGenerator gen)
+    {
+        planet.structuresPrefabs = new List<GameObject>();
+        planet.structures = new List<StructureInfo>();
+
+        int[] structStartIndex = new int[planet.biomes.Length];
+        for (int i = 0; i < planet.biomes.Length; i++)
+        {
+            structStartIndex[i] = planet.structuresPrefabs.Count;
+
+            foreach (var s in planet.biomes[i].structures)
+                planet.structuresPrefabs.Add(s.prefab);
+        }
+
+        var dAngle = new UniformFloatDistribution(0, 360.0f);
+
+        for(int i = 0; i < planet.triangles.Length; i++)
+        {
+            int biomeId = PlanetEx.biomeIndexOfTriangle(planet, i);
+            if (biomeId < 0)
+                continue;
+
+            if (planet.biomes[biomeId].structureDensity <= 0 || planet.biomes[biomeId].structures.Count == 0)
+                continue;
+
+            var t = planet.triangles[i];
+
+            float area = MathEx.triangleArea(planet.points[t.v1].point, planet.points[t.v2].point, planet.points[t.v3].point) * planet.biomes[biomeId].structureDensity;
+
+            float v = area - (int)area;
+            if (new BernoulliDistribution(v).Next(gen))
+                area = (int)area + 1;
+            else area = (int)area;
+
+            var p1 = planet.points[t.v1].point * (planet.points[t.v1].height + 1) * planet.scale;
+            var p2 = planet.points[t.v2].point * (planet.points[t.v2].height + 1) * planet.scale;
+            var p3 = planet.points[t.v3].point * (planet.points[t.v3].height + 1) * planet.scale;
+
+            var d = new Uniform3DTriangleDistribution(p1, p2, p3);
+
+            List<float> weights = new List<float>();
+            for (int j = 0; j < planet.biomes[biomeId].structures.Count; j++)
+                weights.Add(planet.biomes[biomeId].structures[j].weight);
+            var dStructs = new DiscreteDistribution(weights);
+
+            for(int j = 0; j < area; j++)
+            {
+                var pos = d.Next(gen);
+                var rot = Quaternion.AngleAxis(dAngle.Next(gen), pos.normalized);
+                planet.structures.Add(new StructureInfo(dStructs.Next(gen) + structStartIndex[biomeId], i, pos, rot));
+            }
         }
     }
 }
