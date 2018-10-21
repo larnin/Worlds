@@ -120,6 +120,185 @@ public static class PlanetRenderer
         return m;
     }
 
+    public static Mesh CreateRiversMesh(PlanetData planet)
+    {
+        Stopwatch sw = new Stopwatch();
+        sw.Start();
+
+        int biomeIndex = -1;
+        for(int i = 0; i < planet.biomes.Length; i++)
+            if(planet.biomes[i].isRiverBiome)
+            {
+                biomeIndex = i;
+                break;
+            }
+        if (biomeIndex < 0)
+            return null;
+
+        List<Vector3> points = new List<Vector3>();
+        List<int> triangles = new List<int>();
+        List<Color32> colors = new List<Color32>();
+
+        int index = 0;
+        
+
+
+        for(int i = 0; i < planet.points.Length; i++)
+        {
+            if (!planet.points[i].riverInfo.isRiver() || planet.points[i].riverInfo.nextIndex < 0)
+                continue;
+
+            int nextIndex = planet.points[i].riverInfo.nextIndex;
+
+            Vector3 currentLeft, currentRight, nextLeft, nextRight;
+
+            switch(planet.points[i].riverInfo.previousIndexs.Count)
+            {
+                case 0:
+                    {
+                        var h = Vector3.Cross(planet.points[nextIndex].point - planet.points[i].point, planet.points[i].point).normalized;
+                        currentLeft = planet.points[i].point + h * planet.points[i].riverInfo.width * planet.riverWidth;
+                        currentRight = planet.points[i].point - h * planet.points[i].riverInfo.width * planet.riverWidth;
+                    }
+                    break;
+                case 1:
+                    {
+                        var h = Vector3.Cross(planet.points[nextIndex].point - planet.points[planet.points[i].riverInfo.previousIndexs[0]].point, planet.points[i].point).normalized;
+                        currentLeft = planet.points[i].point + h * planet.points[i].riverInfo.width * planet.riverWidth;
+                        currentRight = planet.points[i].point - h * planet.points[i].riverInfo.width * planet.riverWidth;
+                    }
+                    break;
+                default:
+                    {
+                        List<Vector3> previous = new List<Vector3>();
+                        foreach (var pt in planet.points[i].riverInfo.previousIndexs)
+                            previous.Add(planet.points[pt].point);
+                        var left = getLeft(previous, planet.points[i].point, planet.points[nextIndex].point, planet.points[i].point.normalized);
+                        var right = getRight(previous, planet.points[i].point, planet.points[nextIndex].point, planet.points[i].point.normalized);
+                        var hLeft = Vector3.Cross(planet.points[nextIndex].point - left, planet.points[i].point).normalized;
+                        var hRight = Vector3.Cross(planet.points[nextIndex].point - right, planet.points[i].point).normalized;
+
+                        currentLeft = planet.points[i].point + hLeft * planet.points[i].riverInfo.width * planet.riverWidth;
+                        currentRight = planet.points[i].point - hRight * planet.points[i].riverInfo.width * planet.riverWidth;
+                    }
+                    break;
+            }
+
+            List<Vector3> nextPoints = new List<Vector3>();
+            foreach(var pt in planet.points[nextIndex].riverInfo.previousIndexs)
+            {
+                if (pt == i)
+                    continue;
+                nextPoints.Add(planet.points[pt].point);
+            }
+            if (planet.points[nextIndex].riverInfo.nextIndex >= 0)
+                nextPoints.Add(planet.points[planet.points[nextIndex].riverInfo.nextIndex].point);
+
+            switch (nextPoints.Count)
+            {
+                case 0:
+                    {
+                        var h = Vector3.Cross(planet.points[i].point - planet.points[nextIndex].point, planet.points[nextIndex].point).normalized;
+                        nextLeft = planet.points[nextIndex].point - h * planet.points[nextIndex].riverInfo.width * planet.riverWidth;
+                        nextRight = planet.points[nextIndex].point + h * planet.points[nextIndex].riverInfo.width * planet.riverWidth;
+                    }
+                    break;
+                case 1:
+                    {
+                        var h = Vector3.Cross(nextPoints[0] - planet.points[i].point, planet.points[nextIndex].point).normalized;
+                        nextLeft = planet.points[nextIndex].point + h * planet.points[nextIndex].riverInfo.width * planet.riverWidth;
+                        nextRight = planet.points[nextIndex].point - h * planet.points[nextIndex].riverInfo.width * planet.riverWidth;
+                    }
+                    break;
+                default:
+                    {
+                        var left = getLeft(nextPoints, planet.points[nextIndex].point, planet.points[i].point, planet.points[nextIndex].point.normalized);
+                        var right = getRight(nextPoints, planet.points[nextIndex].point, planet.points[i].point, planet.points[nextIndex].point.normalized);
+                        var hLeft = Vector3.Cross(planet.points[i].point - left, planet.points[nextIndex].point).normalized;
+                        var hRight = Vector3.Cross(planet.points[i].point - right, planet.points[nextIndex].point).normalized;
+
+                        nextLeft = planet.points[nextIndex].point - hLeft * planet.points[nextIndex].riverInfo.width * planet.riverWidth;
+                        nextRight = planet.points[nextIndex].point + hRight * planet.points[nextIndex].riverInfo.width * planet.riverWidth;
+                    }
+                    break;
+            }
+
+            var current = planet.points[i].point * (planet.points[i].height + 1 + planet.riverMoreHeight) * planet.scale;
+            var next = planet.points[nextIndex].point * (planet.points[nextIndex].height + 1 + planet.riverMoreHeight) * planet.scale;
+
+            currentLeft *= (planet.points[i].height + 1 + planet.riverMoreHeight) * planet.scale;
+            currentRight *= (planet.points[i].height + 1 + planet.riverMoreHeight) * planet.scale;
+            nextLeft *= (planet.points[nextIndex].height + 1 + planet.riverMoreHeight) * planet.scale;
+            nextRight *= (planet.points[nextIndex].height + 1 + planet.riverMoreHeight) * planet.scale;
+
+            points.Add(currentLeft);
+            points.Add(nextLeft);
+            points.Add(next);
+            points.Add(current);
+            points.Add(currentLeft);
+            points.Add(next);
+            points.Add(currentRight);
+            points.Add(current);
+            points.Add(next);
+            points.Add(currentRight);
+            points.Add(next);
+            points.Add(nextRight);
+
+            for(int j = index; j < index + 12; j++)
+            {
+                triangles.Add(j);
+                colors.Add(planet.biomes[biomeIndex].color);
+            }
+            index += 12;
+        }
+
+        Mesh m = new Mesh();
+        m.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+        m.vertices = points.ToArray();
+        m.colors32 = colors.ToArray();
+        m.triangles = triangles.ToArray();
+        m.RecalculateNormals();
+        m.RecalculateTangents();
+        m.RecalculateBounds();
+
+        sw.Stop();
+        UnityEngine.Debug.Log("Elapsed rivers renderer " + sw.Elapsed);
+
+        return m;
+    }
+
+    static Vector3 getLeft(List<Vector3> points, Vector3 center, Vector3 basePoint, Vector3 vertical)
+    {
+        if (points.Count == 0)
+            return basePoint;
+
+        Plane p = new Plane(vertical, center);
+        var basePos = p.ClosestPointOnPlane(basePoint);
+        basePos = (basePos - center).normalized;
+
+        float bestValue = float.MaxValue;
+        int bestIndex = -1;
+        for(int i = 0; i < points.Count; i++)
+        {
+            var pos = p.ClosestPointOnPlane(points[i]);
+            pos = (pos - center).normalized;
+            float value = Vector3.Dot(pos, basePos);
+            if(value < bestValue)
+            {
+                bestValue = value;
+                bestIndex = i;
+            }
+        }
+        if (bestIndex < 0)
+            return basePoint;
+        return points[bestIndex];
+    }
+
+    static Vector3 getRight(List<Vector3> points, Vector3 center, Vector3 basePoint, Vector3 vertical)
+    {
+        return getLeft(points, center, basePoint, -vertical);
+    }
+
     static int biomeIndexOfTriangle(PlanetData planet, int triangleIndex)
     {
         var t = planet.triangles[triangleIndex];

@@ -6,7 +6,6 @@ using UnityEngine;
 using NRand;
 using System.Diagnostics;
 using Sirenix.OdinInspector;
-using Priority_Queue;
 
 public class Pair<T, U>
 {
@@ -40,15 +39,6 @@ public class Pair<T, U>
         return hash;
     }
 }
-
-//class NextQueueNode : FastPriorityQueueNode
-//{
-//    public NextQueueNode(int _index)
-//    {
-//        index = _index;
-//    }
-//    public int index;
-//}
 
 [Serializable]
 public class PlanetGeneratorData
@@ -84,6 +74,8 @@ public class PlanetGeneratorData
     public int riverTestCount = 20;
     public float riverMoistureMin = 0.5f;
     public float moisturePropagationResistance = 1.0f;
+    public float riverWidth = 0.1f;
+    public float riverMoreHeight = 0.01f;
 }
 
 [Serializable]
@@ -117,6 +109,7 @@ public struct RiverPoint
 {
     public float width;
     public int nextIndex;
+    public List<int> previousIndexs;
 
     public bool isRiver()
     {
@@ -137,6 +130,8 @@ public struct PlanetPoint
 public class PlanetData
 {
     public float scale;
+    public float riverWidth;
+    public float riverMoreHeight;
     public PlanetPoint[] points;
     public Triangle[] triangles;
     public Biome[] biomes;
@@ -152,6 +147,8 @@ public static class PlanetGenerator
         UnityEngine.Debug.Log("Elapsed sphere " + sw.Elapsed); sw.Reset(); sw.Start();
 
         planet.scale = data.planetScale;
+        planet.riverWidth = data.riverWidth;
+        planet.riverMoreHeight = data.riverMoreHeight;
         planet.biomes = data.biomes;
 
         var gen = new DefaultRandomGenerator(data.seed);
@@ -195,6 +192,7 @@ public static class PlanetGenerator
             planet.points[i].biomeID = -1;
             planet.points[i].connectedPoints = new List<int>();
             planet.points[i].riverInfo.nextIndex = -1;
+            planet.points[i].riverInfo.previousIndexs = new List<int>();
         }
         for (int i = 0; i < planet.triangles.Length; i++)
             planet.triangles[i] = sub.triangles[i];
@@ -456,7 +454,6 @@ public static class PlanetGenerator
 
         while(next.Count > 0)
         {
-            loop++;
             var current = next.First.Value.index;
             next.RemoveFirst();
             nextPoints[current] = false;
@@ -515,7 +512,6 @@ public static class PlanetGenerator
                 }
             }
         }
-        UnityEngine.Debug.Log("loop " + loop);
         
         if (oceanBiomeIndex >= 0)
         {
@@ -527,11 +523,14 @@ public static class PlanetGenerator
         }
 
         UnityEngine.Debug.Log("\tElapsed heights " + sw.Elapsed); sw.Reset(); sw.Start();
-
+        
         for (int i = 0; i < planet.points.Length; i++)
         {
-            if (newHeight[i] == 0 && planet.points[i].biomeID < 0)
+            if (newHeight[i] == 0 || (planet.points[i].biomeID == lakeBiomeIndex && lakeBiomeIndex >= 0))
+            {
+                planet.points[i].height = newHeight[i];
                 continue;
+            }
 
             float sum = 0;
 
@@ -545,7 +544,7 @@ public static class PlanetGenerator
         float min = Mathf.Min(newHeight);
         float max = Mathf.Max(newHeight);
 
-        for (int i = 0; i < newHeight.Length; i++)
+        for (int i = 0; i < planet.points.Length; i++)
         {
             float h = planet.points[i].height;
             if (h < 0)
@@ -623,9 +622,20 @@ public static class PlanetGenerator
     static void makeRivers(PlanetData planet, IRandomGenerator gen, int riverNb, int riverTestCount)
     {
         
-        var dStart = new UniformIntDistribution(0, planet.points.Length);
+        var dStart = new UniformIntDistribution(0, planet.points.Length-1);
 
-        for(int i = 0; i < riverNb; i++)
+        int oceanBiomeIndex = -1;
+        int lakeBiomeIndex = -1;
+        
+        for (int i = 0; i < planet.biomes.Length; i++)
+        {
+            if (planet.biomes[i].isLakeBiome)
+                lakeBiomeIndex = i;
+            if (planet.biomes[i].isOceanBiome)
+                oceanBiomeIndex = i;
+        }
+
+        for (int i = 0; i < riverNb; i++)
         {
             int currentIndex = -1;
 
@@ -660,10 +670,11 @@ public static class PlanetGenerator
                 if (planet.points[nextPoint].height > planet.points[currentIndex].height)
                     break;
 
-                planet.points[currentIndex].riverInfo.nextIndex = nextPoint;
-
-                if (planet.points[nextPoint].biomeID >= 0)
+                if (planet.points[nextPoint].biomeID == oceanBiomeIndex && oceanBiomeIndex >= 0)
                     break;
+
+                planet.points[currentIndex].riverInfo.nextIndex = nextPoint;
+                planet.points[nextPoint].riverInfo.previousIndexs.Add(currentIndex);
 
                 if(planet.points[nextPoint].riverInfo.isRiver())
                 {
@@ -679,6 +690,9 @@ public static class PlanetGenerator
 
                 planet.points[nextPoint].riverInfo.width = planet.points[currentIndex].riverInfo.width + 1;
                 currentIndex = nextPoint;
+
+                if (planet.points[nextPoint].biomeID == lakeBiomeIndex && lakeBiomeIndex >= 0)
+                    break;
             }
         }
 

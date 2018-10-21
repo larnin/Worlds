@@ -18,19 +18,7 @@ public class PlanetLogic : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.A))
             generate();
 
-        if (m_planet != null)
-        {
-            for(int i = 0; i < m_planet.points.Length; i++)
-            {
-                if (!m_planet.points[i].riverInfo.isRiver())
-                    continue;
-                int p = m_planet.points[i].riverInfo.nextIndex;
-                if (p < 0)
-                    continue;
-                UnityEngine.Debug.DrawLine(m_planet.points[i].point * (m_planet.points[i].height + 1.001f) * m_planet.scale
-                                             , m_planet.points[p].point * (m_planet.points[p].height + 1.001f) * m_planet.scale, Color.red);
-            }
-        }
+        int nb = 0;
     }
 
     void generate()
@@ -38,13 +26,15 @@ public class PlanetLogic : MonoBehaviour
         Stopwatch sw = new Stopwatch();
         sw.Start();
 
-        //planetGeneratorData.seed = seed++;
+        planetGeneratorData.seed = seed++;
         //planetGeneratorData.sphereDivisionLevel = seed++;
         var planet = PlanetGenerator.generate(planetGeneratorData);
-        var comp = GetComponent<MeshFilter>();
-        comp.mesh = PlanetRenderer.createSurfaceMesh(planet);
-        var comp2 = transform.Find("Water").GetComponent<MeshFilter>();
-        comp2.mesh = PlanetRenderer.CreateWaterMesh(planet);
+        var compGround = GetComponent<MeshFilter>();
+        compGround.mesh = PlanetRenderer.createSurfaceMesh(planet);
+        var compWater = transform.Find("Water").GetComponent<MeshFilter>();
+        compWater.mesh = PlanetRenderer.CreateWaterMesh(planet);
+        var compRivers = transform.Find("Rivers").GetComponent<MeshFilter>();
+        compRivers.mesh = PlanetRenderer.CreateRiversMesh(planet);
         m_planet = planet;
 
         sw.Stop();
