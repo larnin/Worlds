@@ -66,7 +66,7 @@ public struct PlanetPoint
 
 public struct StructureInfo
 {
-    public StructureInfo(int _structureIndex, int _triangleIndex, Vector3 _position, Quaternion _rotation)
+    public StructureInfo(int _structureIndex, int _triangleIndex, Vector3 _position, float _rotation)
     {
         structureIndex = _structureIndex;
         triangleIndex = _triangleIndex;
@@ -77,7 +77,7 @@ public struct StructureInfo
     public int structureIndex;
     public int triangleIndex;
     public Vector3 position;
-    public Quaternion rotation;
+    public float rotation;
 }
 
 public class PlanetData

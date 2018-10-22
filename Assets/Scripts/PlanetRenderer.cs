@@ -276,7 +276,8 @@ public static class PlanetRenderer
         {
             var obj = GameObject.Instantiate(planet.structuresPrefabs[planet.structures[i].structureIndex], structuresParent);
             obj.transform.localPosition = planet.structures[i].position;
-            obj.transform.localRotation = planet.structures[i].rotation;
+            obj.transform.up = planet.structures[i].position.normalized;
+            obj.transform.rotation = obj.transform.rotation * Quaternion.Euler(0, planet.structures[i].rotation, 0);
         }
 
         UnityEngine.Debug.Log("Elapsed structures renderer " + sw.Elapsed);

@@ -34,7 +34,7 @@ namespace NRand
         {
             float dX = _d.Next(generator);
             float dY = _d.Next(generator);
-            if(dX + dY > 0.5f)
+            if(dX + dY > 1.0f)
             {
                 dX = 1 - dX;
                 dY = 1 - dY;

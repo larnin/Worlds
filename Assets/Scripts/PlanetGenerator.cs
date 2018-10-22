@@ -792,8 +792,7 @@ public static class PlanetGenerator
             for(int j = 0; j < area; j++)
             {
                 var pos = d.Next(gen);
-                var rot = Quaternion.AngleAxis(dAngle.Next(gen), pos.normalized);
-                planet.structures.Add(new StructureInfo(dStructs.Next(gen) + structStartIndex[biomeId], i, pos, rot));
+                planet.structures.Add(new StructureInfo(dStructs.Next(gen) + structStartIndex[biomeId], i, pos, dAngle.Next(gen)));
             }
         }
     }
